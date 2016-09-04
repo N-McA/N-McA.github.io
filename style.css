@@ -16,18 +16,12 @@ html {
     overflow-y:scroll;
     box-sizing:border-box
 }
-*,*:before,*:after {
-    box-sizing:inherit;
-    padding:0;
-    margin:0
-}
 body {
     position:relative;
     font-family:"Fredo",sans-serif;
     font-size:1rem;
     font-weight:400;
     line-height:1.5;
-    background:#fff;
     color:#111;
     padding:0 1rem;
     max-width:50rem;
@@ -35,17 +29,14 @@ body {
 }
 a:not(.btn) {
     color:#111;
-    text-decoration:none
-}
-p>a {
-    background-image:-webkit-linear-gradient(transparent,transparent 93.75%,#111 93.75%);
-    background-image:linear-gradient(transparent,transparent 93.75%,#111 93.75%)
+    text-decoration: underline;
 }
 h1,h2,h3,h4,h5,h6 {
     font-weight:400;
     margin-top:2em;
     margin-bottom:.5em;
-    max-width:28rem
+    max-width:28rem;
+    border-bottom: 1px solid #000;
 }
 h1 {
     font-size:2rem
@@ -68,19 +59,9 @@ hr {
     max-width:5rem;
     margin:1rem 0 4rem
 }
-mark {
-    background:yellow
-}
-section,article {
-    display:block;
-    padding-top:30vh;
-    padding-bottom:20vh
-}
-header {
-    position:absolute;
-    top:10vh;
-    left:1rem;
-    z-index:2
+img {
+    display: block;
+    margin: auto;
 }
 .icon {
     width:1rem;
