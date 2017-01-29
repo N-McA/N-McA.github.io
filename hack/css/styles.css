@@ -1,0 +1,22 @@
+
+.header-links {
+  text-align:center;
+  margin-top: 5%;
+  color: red;
+  font-size: 5vmin;
+}
+
+.header-links>a {
+  padding-left: 5vmin;
+  padding-right: 5vmin;
+}
+
+.center {
+  margin: auto;
+  width: 90%;
+}
+
+iframe {
+  display:block;
+  width: 100%;
+}
