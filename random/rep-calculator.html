@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ORM Equivalent Set Calculator</title>
+  <style>
+    :root {
+      --main-color: #4a90e2;
+      --text-color: #333;
+      --background-color: #f5f5f5;
+      --input-background: #fff;
+      --input-border-color: #ccc;
+      --input-focus-border-color: var(--main-color);
+      --error-color: #f44336;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text-color);
+      background-color: var(--background-color);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 80%;
+      max-width: 30em;
+      margin: 20px auto;
+      border-collapse: collapse;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    th,
+    td {
+      padding: 15px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+    }
+
+    th {
+      background-color: var(--main-color);
+      color: white;
+    }
+
+    tbody tr:hover {
+      background-color: #eaeaea;
+    }
+
+    .input-box {
+      max-width: 35em;
+      margin: auto;
+    }
+
+    .input-section {
+      width: 80%;
+      margin: 20px auto;
+    }
+
+    .input-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      padding-left: 0.5em;
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      flex-basis: 150px;
+      flex-grow: 1;
+      padding-bottom: 1em;
+    }
+
+    label {
+      font-weight: bold;
+      margin-right: 5px;
+      margin-bottom: 5px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+
+    input {
+      margin: 0 10px;
+      background-color: var(--input-background);
+      border: 1px solid var(--input-border-color);
+      padding: 8px;
+      outline: none;
+      border-radius: 4px;
+    }
+
+    input:focus {
+      border-color: var(--input-focus-border-color);
+    }
+
+
+    small.error-message {
+      position: absolute;
+      left: 0;
+      bottom: -20px;
+      font-size: 12px;
+      color: var(--error-color);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="input-section">
+    <h2>ORM Equivalent Set Calculator</h2>
+    <p>This page uses <a href="https://en.wikipedia.org/wiki/One-repetition_maximum#Brzycki">Brzycki's</a> formula to estimate one-rep-max equivalent sets.</p>
+    <div class="input-box">
+      <h3>Previous failure set:</h3>
+      <div class="input-group">
+        <div class="field">
+          <label for="weight">Weight:</label>
+          <div class="input-wrapper"><input type="number" id="weight" name="weight" step="0.01" min="0"
+              oninput="updateTable()"></div>
+        </div>
+        <div class="field">
+          <label for="reps">Reps:</label>
+          <div class="input-wrapper"><input type="number" id="reps" name="reps" min="0" oninput="updateTable()"></div>
+        </div>
+      </div>
+    </div>
+    <div class="input-box">
+      <h3>Available Weight:</h3>
+      <div class="input-group">
+        <div class="field">
+          <label for="starting">Starting:</label>
+          <div class="input-wrapper"><input type="number" id="starting" name="starting" step="0.01" min="0"
+              oninput="updateTable()"></div>
+        </div>
+        <div class="field">
+          <label for="increment">Increment:</label>
+          <div class="input-wrapper"><input type="number" id="increment" name="increment" step="0.01"
+              min="0" oninput="updateTable()"></div>
+        </div>
+      </div>
+    </div>
+    <div class="input-box">
+      <h3>Make sets (optional):</h3>
+      <div class="input-group">
+        <div class="field">
+          <div class="input-wrapper"><input type="text" id="sets" name="sets"
+              oninput="updateTable()"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Weight</th>
+        <th>Estimated Reps</th>
+      </tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+</body>
+
+<script>
+  function calculate_reps(weight, real_reps, real_weight) {
+    // Calculate theoretical one-rep-max with Brzycki formula:
+    const orm = 36 * real_weight / (37 - real_reps);
+    // Calculate theoretical reps with Brzycki formula:
+    return ((37 * orm - 36 * weight) / orm);
+  }
+
+  function calculate_ideal_weight(reps, real_reps, real_weight) {
+    // Calculate theoretical one-rep-max with Brzycki formula:
+    const orm = 36 * real_weight / (37 - real_reps);
+    // Calculate theoretical weight with Brzycki formula:
+    return (37 - reps) * orm / 36;
+  }
+
+  function show_error(el, msg) {
+    // Create a small warning text element
+    const warningText = document.createElement('small');
+    warningText.classList.add('error-message');
+    warningText.innerHTML = msg;
+
+    // Check if there is an existing warning message
+    const existingWarning = el.parentNode.querySelector('.error-message');
+    if (existingWarning) {
+      // Replace the existing warning message
+      existingWarning.innerHTML = msg;
+    } else {
+      // Add the warning text inside the input wrapper element
+      el.parentNode.appendChild(warningText);
+    }
+  }
+
+  function get_input_value(id) {
+    const el = document.getElementById(id);
+    const value = parseFloat(el.value);
+    let any_error = false;
+    if (isNaN(value)) {
+      show_error(el, 'Please enter a valid number');
+      any_error = true;
+    } else if (value < 0) {
+      show_error(el, 'Please enter a positive number');
+      any_error = true;
+    }
+    return [value, any_error];
+  }
+
+  function saveInputValues() {
+    localStorage.setItem("weight", document.getElementById("weight").value);
+    localStorage.setItem("reps", document.getElementById("reps").value);
+    localStorage.setItem("starting", document.getElementById("starting").value);
+    localStorage.setItem("increment", document.getElementById("increment").value);
+    localStorage.setItem("sets", document.getElementById("sets").value);
+  }
+
+  let hasRestored = false;
+
+  function maybeInitialiseValues() {
+    if (!hasRestored) {
+      document.getElementById("weight").value = localStorage.getItem("weight");
+      document.getElementById("reps").value = localStorage.getItem("reps");
+      document.getElementById("starting").value = localStorage.getItem("starting") || "0";
+      document.getElementById("increment").value = localStorage.getItem("increment") || "2.5";
+      document.getElementById("sets").value = localStorage.getItem("sets") || "";
+      hasRestored = true;
+    }
+  }
+
+  function isNan(value) {
+    return value !== value;
+  }
+
+  function updateTable() {
+
+    // Load stored values from localStorage when the page loads
+    maybeInitialiseValues()
+
+    // Get the floats:
+    const [starting, any_error_starting] = get_input_value("starting");
+    let [increment, any_error_increment] = get_input_value("increment");
+    const [real_weight, any_error_weight] = get_input_value("weight");
+    const [real_reps, any_error_reps] = get_input_value("reps");
+
+    // Get sets, which is a list:
+    const setsText = document.getElementById("sets").value;
+    // Split on commas or spaces:
+    const sets = setsText.split(/[, ]+/).filter(x => x).map(x => parseInt(x));
+    // If any are NaN, show an error:
+    if (sets.length && sets.some(isNaN)) {
+      show_error(document.getElementById("sets"), "Please enter a valid list of numbers");
+      return;
+    }
+
+    const tbody = document.querySelector("tbody");
+
+    if (any_error_starting || any_error_increment || any_error_weight || any_error_reps) {
+      return;
+    }
+    if (increment == 0) {
+      show_error(document.getElementById("increment"), "Increment cannot be 0");
+      return;
+    }
+
+    // No errors, so remove any existing warning messages
+    // by deleting all elements with the class 'error-message'
+    const warningTexts = document.querySelectorAll('.error-message');
+    for (let i = 0; i < warningTexts.length; i++) {
+      warningTexts[i].remove();
+    }
+
+    // Save the values to localStorage.
+    saveInputValues();
+
+    tbody.innerHTML = "";
+
+    // If sets are not provided, just work down from the orm.
+    // Otherwise, compute the orm-equivalent for the requested sets.
+    const weights = [];
+    if (sets.length) {
+      for (const set of sets) {
+        const ideal = calculate_ideal_weight(set, real_reps, real_weight);
+        const weight = Math.floor((ideal - starting) / increment) * increment + starting;
+        weights.push(weight);
+      }
+    } else {
+      const orm = 36 * real_weight / (37 - real_reps);
+      const max = Math.ceil((orm - starting) / increment) * increment + starting;
+      for (let weight = max; weight > 0; weight -= increment) {
+        weights.push(weight);
+        if (weights.length >= 20) break;
+      }
+    }
+
+    for (const weight of weights) {
+      // Calculate theoretical reps with Brzycki formula:
+      const reps = calculate_reps(weight, real_reps, real_weight);
+      if (reps > 0) {
+        const row = `
+              <tr>
+                  <td>${weight.toFixed(2)}</td>
+                  <td>${reps.toFixed(2)}</td>
+              </tr>
+          `;
+        tbody.innerHTML += row;
+      }
+      if (reps > 25) {
+        break;
+      }
+    }
+  }
+
+  updateTable();
+</script>
+
+</html>
