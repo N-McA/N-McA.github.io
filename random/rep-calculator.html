@@ -136,6 +136,15 @@
           <div class="input-wrapper"><input type="number" id="reps" name="reps" min="0" oninput="updateTable()"></div>
         </div>
       </div>
+      <div class="field">
+        <label>Multiplier:</label>
+        <div class="input-wrapper">
+          <label><input type="radio" name="multiplier" value="1" checked="checked" oninput="updateTable()">100%</label>
+          <label><input type="radio" name="multiplier" value="0.95" oninput="updateTable()">95%</label>
+          <label><input type="radio" name="multiplier" value="0.925" oninput="updateTable()">92.5%</label>
+          <label><input type="radio" name="multiplier" value="0.9" oninput="updateTable()">90%</label>
+        </div>
+      </div>
     </div>
     <div class="input-box">
       <h3>Available Weight:</h3>
@@ -289,17 +298,30 @@
 
     tbody.innerHTML = "";
 
+    // Get the selected multiplier:
+    const multiplierElements = document.getElementsByName('multiplier');
+    let multiplier = 1; // Default value
+    for (const el of multiplierElements) {
+      if (el.checked) {
+        multiplier = parseFloat(el.value);
+        break;
+      }
+    }
+
+    // Apply the multiplier to the real weight:
+    const adjusted_real_weight = real_weight * multiplier;
+
     // If sets are not provided, just work down from the orm.
     // Otherwise, compute the orm-equivalent for the requested sets.
     const weights = [];
     if (sets.length) {
       for (const set of sets) {
-        const ideal = calculate_ideal_weight(set, real_reps, real_weight);
+        const ideal = calculate_ideal_weight(set, real_reps, adjusted_real_weight);
         const weight = Math.floor((ideal - starting) / increment) * increment + starting;
         weights.push(weight);
       }
     } else {
-      const orm = 36 * real_weight / (37 - real_reps);
+      const orm = 36 * adjusted_real_weight / (37 - real_reps);
       const max = Math.ceil((orm - starting) / increment) * increment + starting;
       for (let weight = max; weight > 0; weight -= increment) {
         weights.push(weight);
@@ -309,7 +331,7 @@
 
     for (const weight of weights) {
       // Calculate theoretical reps with Brzycki formula:
-      const reps = calculate_reps(weight, real_reps, real_weight);
+      const reps = calculate_reps(weight, real_reps, adjusted_real_weight);
       if (reps > 0) {
         const row = `
               <tr>
