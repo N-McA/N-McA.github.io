@@ -185,6 +185,14 @@
 </body>
 
 <script>
+  // This sets up stale-while-revalidate:
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/random/sw.js').then(function(registration) {
+      console.log('Service Worker registered with scope:', registration.scope);
+    }).catch(function(error) {
+      console.log('Service Worker registration failed:', error);
+    });
+  }
   function calculate_reps(weight, real_reps, real_weight) {
     // Calculate theoretical one-rep-max with Brzycki formula:
     const orm = 36 * real_weight / (37 - real_reps);
