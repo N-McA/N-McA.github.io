@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Countdown Timer</title>
+    <style>
+      body {
+        font-family: 'Courier New', monospace; /* Use a monospace font */
+        font-weight: bold; 
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f4f4f4;
+      }
+      #countdown {
+        font-size: 4em;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      #countdown span {
+        margin: 0 0.5em; /* This sets horizontal and vertical margin, modify as needed */
+        min-width: 100px; /* This ensures that the spans are wide enough to stack when necessary */
+      }
+    </style>
+    <!-- Include moment.js from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.34/moment-timezone-with-data.min.js"></script>
+  </head>
+  <body>
+    <div id="countdown">Calculating...</div>
+
+    <script>
+      function updateCountdown() {
+        // Set the date we're counting down to (SF time)
+        let targetDate = moment.tz(
+          "2027-07-05",
+          "YYYY-MM-DD",
+          "America/Los_Angeles"
+        );
+
+        // Get the current date and time in SF timezone
+        let now = moment.tz("America/Los_Angeles");
+
+        // Calculate the difference in years, months, and days
+        let years = targetDate.diff(now, "years");
+        now.add(years, "years");
+
+        let months = targetDate.diff(now, "months");
+        now.add(months, "months");
+
+        let days = targetDate.diff(now, "days");
+
+        // Output the result
+        document.getElementById(
+          "countdown"
+        ).innerHTML = `<span>${years} Years</span><span>${months} Months</span><span>${days} Days</span>`;
+      }
+
+      // Update the countdown every second
+      setInterval(updateCountdown, 1000);
+    </script>
+  </body>
+</html>
