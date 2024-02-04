@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Countdown Timer</title>
+    <style>
+      body {
+        font-family: "Courier New", monospace; /* Use a monospace font */
+        font-weight: bold;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f4f4f4;
+        margin: 0;
+      }
+      #container {
+        text-align: center;
+      }
+      #countdown {
+        font-size: 4em;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      #countdown span {
+        margin: 0 0.5em; /* This sets horizontal and vertical margin, modify as needed */
+        min-width: 100px; /* This ensures that the spans are wide enough to stack when necessary */
+      }
+      #progress-container {
+        width: 80%;
+        height: 30px;
+        margin: 20px auto;
+        background-color: #ddd;
+        border-radius: 15px;
+        overflow: hidden;
+      }
+      #progress-bar {
+        height: 100%;
+        background-color: #4caf50;
+        width: 0%; /* Initially set to 0% */
+      }
+      .row {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.34/moment-timezone-with-data.min.js"></script>
+  </head>
+  <body>
+    <div id="container">
+      <div id="countdown">Calculating...</div>
+      <p>remaining</p>
+      <div class="row">
+          <p>2023-07-05</p>
+          <div id="progress-container">
+            <div id="progress-bar"></div>
+          </div>
+          <p>2027-07-05</p>
+      </div>
+    </div>
+    <script>
+      function updateCountdown() {
+        // Set the date we're counting down to (SF time)
+        let targetDate = moment.tz(
+          "2027-07-05",
+          "YYYY-MM-DD",
+          "America/Los_Angeles"
+        );
+
+        // Get the current date and time in SF timezone
+        let now = moment.tz("America/Los_Angeles");
+
+        // Calculate the difference in years, months, and days
+        let years = targetDate.diff(now, "years");
+        now.add(years, "years");
+
+        let months = targetDate.diff(now, "months");
+        now.add(months, "months");
+
+        let days = targetDate.diff(now, "days");
+
+        // Output the result
+        document.getElementById(
+          "countdown"
+        ).innerHTML = `<span>${years} Years</span><span>${months} Months</span><span>${days} Days</span>`;
+
+        // Calculate the progress percentage
+        let startDate = moment.tz(
+          "2023-07-05",
+          "YYYY-MM-DD",
+          "America/Los_Angeles"
+        );
+        let totalDuration = targetDate.diff(startDate);
+        let passedDuration = moment.tz("America/Los_Angeles").diff(startDate);
+        let progress = (passedDuration / totalDuration) * 100;
+
+        // Update the progress bar
+        document.getElementById("progress-bar").style.width = progress + "%";
+      }
+
+      // Update the countdown every second
+      setInterval(updateCountdown, 1000);
+    </script>
+  </body>
+</html>
