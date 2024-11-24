@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Kilter Logbook</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    #upload,
+    #new-upload {
+      display: block;
+      margin: 20px auto;
+    }
+
+    #chart {
+      margin-top: 40px;
+      text-align: center;
+    }
+
+    .tooltip {
+      position: absolute;
+      text-align: left;
+      padding: 8px;
+      font: 12px sans-serif;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #d3d3d3;
+      border-radius: 4px;
+      pointer-events: none;
+      box-shadow: 0px 0px 2px 0px #a6a6a6;
+    }
+
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #333;
+      shape-rendering: crispEdges;
+    }
+
+    .circle {
+      fill: #1f77b4;
+      stroke: #fff;
+      stroke-width: 1.5px;
+    }
+
+    .circle:hover {
+      fill: #ff7f0e;
+    }
+
+    .circle-text {
+      pointer-events: none;
+    }
+
+    svg {
+      display: inline-block;
+    }
+
+    .y.axis.scatter .tick line,
+    .y.axis.scatter .tick text {
+      display: none;
+    }
+
+    #scatterplot {
+      margin-bottom: 50px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Kilter Logbook</h1>
+
+  <input type="file" id="upload" accept=".csv" style="display:none;">
+  <button id="new-upload" style="display:none;">Upload Data</button>
+
+  <div id="chart">
+    <div id="scatterplot"></div>
+    <div id="linechart"></div>
+  </div>
+
+  <div class="tooltip" style="opacity:0;"></div>
+
+  <!-- Include D3.js -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const newUpload = document.getElementById('new-upload');
+    const chartDiv = document.getElementById('chart');
+    const tooltip = d3.select('.tooltip');
+
+    // Check if data exists in sessionStorage
+    if (sessionStorage.getItem('climbData')) {
+      const storedData = JSON.parse(sessionStorage.getItem('climbData'));
+      processData(storedData);
+      newUpload.style.display = 'block';
+    } else {
+      upload.style.display = 'block';
+    }
+
+    upload.addEventListener('change', handleFileUpload);
+    newUpload.addEventListener('click', () => {
+      upload.click();
+    });
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (file && file.name.endsWith('.csv')) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const text = e.target.result;
+          const data = d3.csvParse(text);
+          // Store data in sessionStorage
+          sessionStorage.setItem('climbData', JSON.stringify(data));
+          processData(data);
+          upload.style.display = 'none';
+          newUpload.style.display = 'block';
+        };
+        reader.readAsText(file);
+      } else {
+        alert('Please upload a valid CSV file.');
+      }
+    }
+
+    function processData(data) {
+      data.forEach(d => {
+        d.date = new Date(d.date);
+        d.grade = +d.logged_grade.replace('V', '');
+        d.time = d3.timeFormat('%H:%M:%S')(d.date);
+        d.dateOnly = d3.timeFormat('%Y-%m-%d')(d.date);
+      });
+
+      const nestedData = d3.group(data, d => d.dateOnly);
+
+      const plotData = [];
+      const sessionTotals = [];
+      let sessionIndex = 0;
+      const sessionIndexToDate = {}; // Map sessionIndex to date
+
+      nestedData.forEach((values, key) => {
+        sessionIndex++;
+        sessionIndexToDate[sessionIndex] = key; // Store the date
+
+        // Compute total grade points for the session
+        let totalGradePoints = 0;
+        values.forEach(d => {
+          totalGradePoints += d.grade;
+        });
+
+        // Store in sessionTotals
+        sessionTotals.push({
+          sessionIndex: sessionIndex,
+          date: new Date(key),
+          totalGradePoints: totalGradePoints
+        });
+
+        // Sort climbs within the day by grade ascending
+        values.sort((a, b) => d3.ascending(a.grade, b.grade));
+
+        values.forEach((d, i) => {
+          plotData.push({
+            date: new Date(key),
+            climbIndex: i,
+            sessionIndex: sessionIndex,
+            totalClimbs: values.length,
+            grade: d.grade,
+            name: d.climb_name,
+            time: d.time,
+            angle: d.angle
+          });
+        });
+      });
+
+      // Calculate dimensions
+      const maxClimbsPerSession = d3.max(plotData, d => d.totalClimbs);
+      const circleRadius = 10;
+      const circleDiameter = circleRadius * 2;
+      const innerHeight = maxClimbsPerSession * circleDiameter;
+      const margin = { top: 20, right: 40, bottom: 60, left: 60 };
+      const height = innerHeight + margin.top + margin.bottom;
+      const width = 960 - margin.left - margin.right;
+
+      drawChart(plotData, sessionIndexToDate, width, height, circleRadius);
+      drawLineChart(sessionTotals, sessionIndexToDate, width, height * 0.75);
+    }
+
+    function drawChart(data, sessionIndexToDate, width, height, circleRadius) {
+      d3.select('#scatterplot').html(''); // Clear any existing content
+
+      const margin = { top: 20, right: 40, bottom: 60, left: 60 };
+
+      const circleDiameter = circleRadius * 2;
+
+      const maxSessionIndex = d3.max(data, d => d.sessionIndex);
+      const maxClimbsPerSession = d3.max(data, d => d.totalClimbs);
+
+      const innerHeight = height - margin.top - margin.bottom;
+
+      const svg = d3.select('#scatterplot').append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height)
+        .style('display', 'inline-block') // Center the SVG
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const xScale = d3.scaleLinear()
+        .domain([1, maxSessionIndex])
+        .range([0, width]);
+
+      const yScale = d3.scaleLinear()
+        .domain([0, maxClimbsPerSession - 1])
+        .range([innerHeight - circleRadius, circleRadius]);
+
+      const xAxis = d3.axisBottom(xScale)
+        .tickFormat(function (d) {
+          return sessionIndexToDate[d] ? sessionIndexToDate[d] : d;
+        })
+        .tickSizeOuter(0);
+
+      svg.append('g')
+        .attr('class', 'x axis')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(xAxis)
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-0.8em")
+        .attr("dy", "0.15em")
+        .attr("transform", "rotate(-65)");
+
+      const yAxis = d3.axisLeft(yScale)
+        .tickSize(0)
+        .tickFormat('');
+
+      svg.append('g')
+        .attr('class', 'y axis scatter') // Add class 'scatter' to this axis
+        .call(yAxis);
+
+      // Add circles
+      svg.selectAll('.circle')
+        .data(data)
+        .enter()
+        .append('circle')
+        .attr('class', 'circle')
+        .attr('cx', d => xScale(d.sessionIndex))
+        .attr('cy', d => yScale(d.climbIndex))
+        .attr('r', circleRadius)
+        .on('mouseover', (event, d) => {
+          tooltip.transition()
+            .duration(200)
+            .style('opacity', .9);
+          tooltip.html(`<strong>Name:</strong> ${d.name}<br/>
+                         <strong>Grade:</strong> V${d.grade}<br/>
+                         <strong>Time:</strong> ${d.time}<br/>
+                         <strong>Angle:</strong> ${d.angle}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+        })
+        .on('mouseout', () => {
+          tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+        });
+
+      // Adjusted color scale for grades
+      const maxGrade = d3.max(data, d => d.grade);
+      const colorScale = d3.scaleSequential()
+        .domain([1, maxGrade])
+        .interpolator(d3.interpolateBlues);
+
+      // Apply the adjusted color scale
+      svg.selectAll('.circle')
+        .style('fill', d => {
+          const grade = d.grade >= 3 ? d.grade : 3;
+          return colorScale(grade);
+        });
+
+      // Add grade labels on circles
+      svg.selectAll('.circle-text')
+        .data(data)
+        .enter()
+        .append('text')
+        .attr('class', 'circle-text')
+        .attr('x', d => xScale(d.sessionIndex))
+        .attr('y', d => yScale(d.climbIndex) + 4)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#fff')
+        .attr('font-size', '10px')
+        .style('pointer-events', 'none')
+        .text(d => `V${d.grade}`);
+    }
+
+    function drawLineChart(sessionTotals, sessionIndexToDate, width, height) {
+      d3.select('#linechart').html(''); // Clear any existing content
+
+      const margin = { top: 20, right: 40, bottom: 60, left: 60 };
+
+      const svg = d3.select('#linechart').append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .style('display', 'inline-block') // Center the SVG
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const xScale = d3.scaleLinear()
+        .domain([1, d3.max(sessionTotals, d => d.sessionIndex)])
+        .range([0, width]);
+
+      const yScale = d3.scaleLinear()
+        .domain([0, d3.max(sessionTotals, d => d.totalGradePoints)])
+        .range([height, 0]);
+
+      const xAxis = d3.axisBottom(xScale)
+        .tickFormat(function (d) {
+          return sessionIndexToDate[d] ? sessionIndexToDate[d] : d;
+        })
+        .tickSizeOuter(0);
+
+      svg.append('g')
+        .attr('class', 'x axis')
+        .attr('transform', `translate(0,${height})`)
+        .call(xAxis)
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-0.8em")
+        .attr("dy", "0.15em")
+        .attr("transform", "rotate(-65)");
+
+      const yAxis = d3.axisLeft(yScale);
+
+      svg.append('g')
+        .attr('class', 'y axis')
+        .call(yAxis);
+
+      // Add Y-axis label
+      svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 0 - margin.left + 15)
+        .attr("x", 0 - (height / 2))
+        .attr("dy", "1em")
+        .style("text-anchor", "middle")
+        .text("Total V Points");
+
+      // Define the line
+      const line = d3.line()
+        .x(d => xScale(d.sessionIndex))
+        .y(d => yScale(d.totalGradePoints));
+
+      // Add the line path
+      svg.append('path')
+        .datum(sessionTotals)
+        .attr('fill', 'none')
+        .attr('stroke', 'steelblue')
+        .attr('stroke-width', 2)
+        .attr('d', line);
+
+      // Add points
+      svg.selectAll('.dot')
+        .data(sessionTotals)
+        .enter().append('circle')
+        .attr('class', 'dot')
+        .attr('cx', d => xScale(d.sessionIndex))
+        .attr('cy', d => yScale(d.totalGradePoints))
+        .attr('r', 4)
+        .attr('fill', 'steelblue')
+        .on('mouseover', (event, d) => {
+          tooltip.transition()
+            .duration(200)
+            .style('opacity', .9);
+          tooltip.html(`<strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br/>
+                        <strong>Total V Points:</strong> ${d.totalGradePoints}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+        })
+        .on('mouseout', () => {
+          tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+        });
+    }
+  </script>
+
+</body>
+
+</html>
