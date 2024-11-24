@@ -83,6 +83,7 @@
   <div id="chart">
     <div id="scatterplot"></div>
     <div id="linechart"></div>
+    <div id="averagechart"></div> <!-- New div for the average chart -->
   </div>
 
   <div class="tooltip" style="opacity:0;"></div>
@@ -148,17 +149,19 @@
         sessionIndex++;
         sessionIndexToDate[sessionIndex] = key; // Store the date
 
-        // Compute total grade points for the session
+        // Compute total grade points and average grade for the session
         let totalGradePoints = 0;
         values.forEach(d => {
           totalGradePoints += d.grade;
         });
+        let averageGrade = totalGradePoints / values.length; // Compute average grade
 
         // Store in sessionTotals
         sessionTotals.push({
           sessionIndex: sessionIndex,
           date: new Date(key),
-          totalGradePoints: totalGradePoints
+          totalGradePoints: totalGradePoints,
+          averageGrade: averageGrade // Add average grade
         });
 
         // Sort climbs within the day by grade ascending
@@ -189,6 +192,7 @@
 
       drawChart(plotData, sessionIndexToDate, width, height, circleRadius);
       drawLineChart(sessionTotals, sessionIndexToDate, width, height * 0.75);
+      drawAverageChart(sessionTotals, sessionIndexToDate, width, height * 0.75); // Call the new function
     }
 
     function drawChart(data, sessionIndexToDate, width, height, circleRadius) {
@@ -375,6 +379,96 @@
             .style('opacity', .9);
           tooltip.html(`<strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br/>
                         <strong>Total V Points:</strong> ${d.totalGradePoints}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+        })
+        .on('mouseout', () => {
+          tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+        });
+    }
+
+    // New function to draw the average chart
+    function drawAverageChart(sessionTotals, sessionIndexToDate, width, height) {
+      d3.select('#averagechart').html(''); // Clear any existing content
+
+      const margin = { top: 20, right: 40, bottom: 60, left: 60 };
+
+      const svg = d3.select('#averagechart').append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .style('display', 'inline-block') // Center the SVG
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+      const xScale = d3.scaleLinear()
+        .domain([1, d3.max(sessionTotals, d => d.sessionIndex)])
+        .range([0, width]);
+
+      const yScale = d3.scaleLinear()
+        .domain([0, d3.max(sessionTotals, d => d.averageGrade)])
+        .range([height, 0]);
+
+      const xAxis = d3.axisBottom(xScale)
+        .tickFormat(function (d) {
+          return sessionIndexToDate[d] ? sessionIndexToDate[d] : d;
+        })
+        .tickSizeOuter(0);
+
+      svg.append('g')
+        .attr('class', 'x axis')
+        .attr('transform', `translate(0,${height})`)
+        .call(xAxis)
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-0.8em")
+        .attr("dy", "0.15em")
+        .attr("transform", "rotate(-65)");
+
+      const yAxis = d3.axisLeft(yScale);
+
+      svg.append('g')
+        .attr('class', 'y axis')
+        .call(yAxis);
+
+      // Add Y-axis label
+      svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 0 - margin.left + 15)
+        .attr("x", 0 - (height / 2))
+        .attr("dy", "1em")
+        .style("text-anchor", "middle")
+        .text("Average V Grade");
+
+      // Define the line
+      const line = d3.line()
+        .x(d => xScale(d.sessionIndex))
+        .y(d => yScale(d.averageGrade));
+
+      // Add the line path
+      svg.append('path')
+        .datum(sessionTotals)
+        .attr('fill', 'none')
+        .attr('stroke', 'green')
+        .attr('stroke-width', 2)
+        .attr('d', line);
+
+      // Add points
+      svg.selectAll('.dot')
+        .data(sessionTotals)
+        .enter().append('circle')
+        .attr('class', 'dot')
+        .attr('cx', d => xScale(d.sessionIndex))
+        .attr('cy', d => yScale(d.averageGrade))
+        .attr('r', 4)
+        .attr('fill', 'green')
+        .on('mouseover', (event, d) => {
+          tooltip.transition()
+            .duration(200)
+            .style('opacity', .9);
+          tooltip.html(`<strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br/>
+                        <strong>Average V Grade:</strong> ${d.averageGrade.toFixed(2)}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
         })
