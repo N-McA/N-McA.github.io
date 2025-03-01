@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Prevent zoom on focus and show numeric keyboard on iOS -->
+  <meta name="viewport" 
+        content="width=device-width, initial-scale=1.0, 
+                 user-scalable=no, 
+                 maximum-scale=1.0">
   <title>ORM Equivalent Set Calculator</title>
   <style>
     :root {
@@ -102,12 +105,13 @@
       padding: 8px;
       outline: none;
       border-radius: 4px;
+      /* Ensure at least 16px font to prevent iOS zoom */
+      font-size: 16px;
     }
 
     input:focus {
       border-color: var(--input-focus-border-color);
     }
-
 
     small.error-message {
       position: absolute;
@@ -128,12 +132,29 @@
       <div class="input-group">
         <div class="field">
           <label for="weight">Weight:</label>
-          <div class="input-wrapper"><input type="number" id="weight" name="weight" step="0.01" min="0"
-              oninput="updateTable()"></div>
+          <!-- Use inputmode, pattern, and step to show numeric keyboard and allow decimals -->
+          <div class="input-wrapper">
+            <input type="number" 
+                   id="weight" 
+                   name="weight" 
+                   step="0.01" 
+                   min="0" 
+                   inputmode="decimal" 
+                   pattern="[0-9]*" 
+                   oninput="updateTable()">
+          </div>
         </div>
         <div class="field">
           <label for="reps">Reps:</label>
-          <div class="input-wrapper"><input type="number" id="reps" name="reps" min="0" oninput="updateTable()"></div>
+          <div class="input-wrapper">
+            <input type="number" 
+                   id="reps" 
+                   name="reps" 
+                   min="0" 
+                   inputmode="numeric" 
+                   pattern="[0-9]*" 
+                   oninput="updateTable()">
+          </div>
         </div>
       </div>
       <div class="field">
@@ -151,13 +172,29 @@
       <div class="input-group">
         <div class="field">
           <label for="starting">Starting:</label>
-          <div class="input-wrapper"><input type="number" id="starting" name="starting" step="0.01" min="0"
-              oninput="updateTable()"></div>
+          <div class="input-wrapper">
+            <input type="number" 
+                   id="starting" 
+                   name="starting" 
+                   step="0.01" 
+                   min="0"
+                   inputmode="decimal"
+                   pattern="[0-9]*"
+                   oninput="updateTable()">
+          </div>
         </div>
         <div class="field">
           <label for="increment">Increment:</label>
-          <div class="input-wrapper"><input type="number" id="increment" name="increment" step="0.01"
-              min="0" oninput="updateTable()"></div>
+          <div class="input-wrapper">
+            <input type="number" 
+                   id="increment" 
+                   name="increment" 
+                   step="0.01" 
+                   min="0"
+                   inputmode="decimal"
+                   pattern="[0-9]*"
+                   oninput="updateTable()">
+          </div>
         </div>
       </div>
     </div>
@@ -165,8 +202,14 @@
       <h3>Make sets (optional):</h3>
       <div class="input-group">
         <div class="field">
-          <div class="input-wrapper"><input type="text" id="sets" name="sets"
-              oninput="updateTable()"></div>
+          <div class="input-wrapper">
+            <!-- This field can remain as text if you'd like freeform input;
+                 if sets are strictly numeric, you could do inputmode="numeric" or type="text" with parsing. -->
+            <input type="text" 
+                   id="sets" 
+                   name="sets"
+                   oninput="updateTable()">
+          </div>
         </div>
       </div>
     </div>
@@ -179,8 +222,7 @@
         <th>Estimated Reps</th>
       </tr>
     </thead>
-    <tbody>
-    </tbody>
+    <tbody></tbody>
   </table>
 </body>
 
@@ -289,13 +331,12 @@
     if (any_error_starting || any_error_increment || any_error_weight || any_error_reps) {
       return;
     }
-    if (increment == 0) {
+    if (increment === 0) {
       show_error(document.getElementById("increment"), "Increment cannot be 0");
       return;
     }
 
     // No errors, so remove any existing warning messages
-    // by deleting all elements with the class 'error-message'
     const warningTexts = document.querySelectorAll('.error-message');
     for (let i = 0; i < warningTexts.length; i++) {
       warningTexts[i].remove();
@@ -342,11 +383,11 @@
       const reps = calculate_reps(weight, real_reps, adjusted_real_weight);
       if (reps > 0) {
         const row = `
-              <tr>
-                  <td>${weight.toFixed(2)}</td>
-                  <td>${reps.toFixed(2)}</td>
-              </tr>
-          `;
+          <tr>
+              <td>${weight.toFixed(2)}</td>
+              <td>${reps.toFixed(2)}</td>
+          </tr>
+        `;
         tbody.innerHTML += row;
       }
       if (reps > 25) {
@@ -357,5 +398,5 @@
 
   updateTable();
 </script>
-
 </html>
+
