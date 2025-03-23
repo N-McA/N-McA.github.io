@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>Time Zone Comparison</title>
+  <style>
+    :root {
+      --primary-color: #3498db;
+      --background-color: #ffffff;
+      --card-background: #fafafa;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --business-hours-color: rgba(46, 204, 113, 0.10);
+      --working-hours-color: rgba(241, 196, 15, 0.10);
+      --night-hours-color: rgba(231, 76, 60, 0.05);
+      --border-color: #eeeeee;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text-primary);
+      background-color: var(--background-color);
+      line-height: 1.5;
+      padding: 1rem;
+    }
+
+    .container {
+      max-width: 600px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .date-selector {
+      padding: 0.5rem;
+      border: none;
+      background-color: var(--background-color);
+      font-size: 1rem;
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .settings-icon {
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.25rem 0.5rem;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+      flex-shrink: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      /* No border around the table */
+      table-layout: fixed;
+    }
+
+    th {
+      padding: 0.75rem 0.5rem 0.25rem;
+      text-align: center;
+      font-weight: 500;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .timezone-name {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: normal;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+
+    td {
+      padding: 0.75rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    /* First column is primary city, show hour */
+    tr td:first-child {
+      font-weight: 500;
+      text-align: center;
+      /* Removed vertical border */
+    }
+
+    .business-hours {
+      background-color: var(--business-hours-color);
+    }
+
+    .working-hours {
+      background-color: var(--working-hours-color);
+    }
+
+    .night-hours {
+      background-color: var(--night-hours-color);
+    }
+
+    .settings-panel {
+      position: fixed;
+      top: 0;
+      right: -300px;
+      width: 300px;
+      height: 100%;
+      background-color: white;
+      border-left: 1px solid var(--border-color);
+      transition: right 0.25s ease;
+      padding: 1.5rem;
+      z-index: 1000;
+      overflow-y: auto;
+      max-width: 100%;
+    }
+
+    .settings-panel.open {
+      right: 0;
+    }
+
+    .settings-panel h2 {
+      margin-bottom: 1.5rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .settings-panel h3 {
+      margin: 1.25rem 0 0.5rem;
+      color: var(--text-primary);
+      font-weight: 500;
+      font-size: 1rem;
+    }
+
+    .settings-group {
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .settings-group label {
+      margin-bottom: 0.25rem;
+      color: var(--text-secondary);
+    }
+
+    .settings-group select {
+      padding: 0.35rem;
+      border: 1px solid var(--border-color);
+      background-color: var(--background-color);
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .hours-range {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .hours-range span {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .city-list {
+      list-style-type: none;
+    }
+
+    .city-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .add-city {
+      margin-top: 1.5rem;
+    }
+
+    .add-city select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-bottom: 0.75rem;
+      border: 1px solid var(--border-color);
+      background-color: var(--background-color);
+      font-size: 1rem;
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .add-city button {
+      width: 100%;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 0.5rem;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: opacity 0.2s;
+    }
+
+    .add-city button:hover {
+      opacity: 0.9;
+    }
+
+    .close-settings {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.3);
+      z-index: 999;
+    }
+
+    .overlay.open {
+      display: block;
+    }
+
+    .remove-btn {
+      border: none;
+      background: none;
+      font-size: 1.25rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      width: 1.75rem;
+      height: 1.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .primary-tag {
+      font-size: 0.75rem;
+      background-color: var(--primary-color);
+      color: white;
+      padding: 0.15rem 0.4rem;
+      margin-left: 0.5rem;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 0.25rem;
+      }
+
+      .container {
+        width: 100%;
+        padding: 0;
+      }
+
+      table {
+        font-size: 0.85rem;
+        width: 100%;
+      }
+
+      th, td {
+        padding: 0.5rem 0.1rem;
+      }
+
+      .date-selector {
+        min-width: 140px;
+        width: auto;
+      }
+
+      .settings-panel {
+        width: 100%;
+        right: -100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <input type="date" id="date-selector" class="date-selector">
+      <button class="settings-icon" id="settings-button" aria-label="Settings">?</button>
+    </div>
+    <table id="time-table">
+      <thead>
+        <tr id="table-header">
+          <!-- City headers will be added by JavaScript -->
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <!-- Rows will be added by JavaScript -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="overlay" id="overlay"></div>
+  <div class="settings-panel" id="settings-panel">
+    <div class="close-settings" id="close-settings">×</div>
+    <h2>Settings</h2>
+    
+    <h3>Table Options</h3>
+    <div class="settings-group">
+      <label for="start-hour">Start Hour:</label>
+      <select id="start-hour">
+        <option value="0">00:00</option>
+        <option value="1">01:00</option>
+        <option value="2">02:00</option>
+        <option value="3">03:00</option>
+        <option value="4">04:00</option>
+        <option value="5">05:00</option>
+        <option value="6">06:00</option>
+        <option value="7" selected>07:00</option>
+        <option value="8">08:00</option>
+        <option value="9">09:00</option>
+        <option value="10">10:00</option>
+        <option value="11">11:00</option>
+        <option value="12">12:00</option>
+        <option value="13">13:00</option>
+        <option value="14">14:00</option>
+        <option value="15">15:00</option>
+        <option value="16">16:00</option>
+        <option value="17">17:00</option>
+        <option value="18">18:00</option>
+        <option value="19">19:00</option>
+        <option value="20">20:00</option>
+        <option value="21">21:00</option>
+        <option value="22">22:00</option>
+        <option value="23">23:00</option>
+      </select>
+    </div>
+    
+    <div class="settings-group">
+      <label>Working Hours:</label>
+      <div class="hours-range">
+        <select id="working-start">
+          <option value="6">06:00</option>
+          <option value="7">07:00</option>
+          <option value="8" selected>08:00</option>
+          <option value="9">09:00</option>
+          <option value="10">10:00</option>
+          <option value="11">11:00</option>
+          <option value="12">12:00</option>
+          <option value="13">13:00</option>
+          <option value="14">14:00</option>
+        </select>
+        <span>to</span>
+        <select id="working-end">
+          <option value="14">14:00</option>
+          <option value="15">15:00</option>
+          <option value="16">16:00</option>
+          <option value="17" selected>17:00</option>
+          <option value="18">18:00</option>
+          <option value="19">19:00</option>
+          <option value="20">20:00</option>
+          <option value="21">21:00</option>
+          <option value="22">22:00</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="settings-group">
+      <label>Awake Hours:</label>
+      <div class="hours-range">
+        <select id="awake-start">
+          <option value="4">04:00</option>
+          <option value="5">05:00</option>
+          <option value="6">06:00</option>
+          <option value="7">07:00</option>
+          <option value="8" selected>08:00</option>
+          <option value="9">09:00</option>
+          <option value="10">10:00</option>
+          <option value="11">11:00</option>
+          <option value="12">12:00</option>
+        </select>
+        <span>to</span>
+        <select id="awake-end">
+          <option value="18">18:00</option>
+          <option value="19">19:00</option>
+          <option value="20">20:00</option>
+          <option value="21">21:00</option>
+          <option value="22" selected>22:00</option>
+          <option value="23">23:00</option>
+          <option value="0">00:00</option>
+          <option value="1">01:00</option>
+          <option value="2">02:00</option>
+        </select>
+      </div>
+    </div>
+    
+    <h3>Cities</h3>
+    <ul class="city-list" id="city-list">
+      <!-- City list items will be added by JavaScript -->
+    </ul>
+    <div class="add-city">
+      <h3>Add City</h3>
+      <select id="city-select">
+        <!-- City options will be added by JavaScript -->
+      </select>
+      <button id="add-city-button">Add City</button>
+    </div>
+  </div>
+
+  <script>
+    // City data with time zones
+    const allCities = [
+      { name: "London", timezone: "Europe/London" },
+      { name: "New York", timezone: "America/New_York" },
+      { name: "San Francisco", timezone: "America/Los_Angeles" },
+      { name: "Tokyo", timezone: "Asia/Tokyo" },
+      { name: "Sydney", timezone: "Australia/Sydney" },
+      { name: "Berlin", timezone: "Europe/Berlin" },
+      { name: "Paris", timezone: "Europe/Paris" },
+      { name: "Beijing", timezone: "Asia/Shanghai" },
+      { name: "Mumbai", timezone: "Asia/Kolkata" },
+      { name: "Dubai", timezone: "Asia/Dubai" },
+      { name: "Singapore", timezone: "Asia/Singapore" },
+      { name: "Auckland", timezone: "Pacific/Auckland" },
+      { name: "Toronto", timezone: "America/Toronto" },
+      { name: "Mexico City", timezone: "America/Mexico_City" },
+      { name: "São Paulo", timezone: "America/Sao_Paulo" },
+      { name: "Los Angeles", timezone: "America/Los_Angeles" },
+      { name: "Chicago", timezone: "America/Chicago" },
+      { name: "Hong Kong", timezone: "Asia/Hong_Kong" },
+      { name: "Seoul", timezone: "Asia/Seoul" }
+    ];
+
+    // Default selected cities (first is primary)
+    let selectedCities = [
+      { name: "San Francisco", timezone: "America/Los_Angeles" },
+      { name: "New York", timezone: "America/New_York" },
+      { name: "London", timezone: "Europe/London" },
+      { name: "Tokyo", timezone: "Asia/Tokyo" }
+    ];
+    
+    // Default settings
+    let settings = {
+      startHour: 7,
+      workingHours: { start: 8, end: 17 },
+      awakeHours: { start: 8, end: 22 }
+    };
+
+    // DOM elements
+    const dateSelector = document.getElementById('date-selector');
+    const tableHeader = document.getElementById('table-header');
+    const tableBody = document.getElementById('table-body');
+    const settingsButton = document.getElementById('settings-button');
+    const settingsPanel = document.getElementById('settings-panel');
+    const closeSettings = document.getElementById('close-settings');
+    const overlay = document.getElementById('overlay');
+    const cityList = document.getElementById('city-list');
+    const citySelect = document.getElementById('city-select');
+    const addCityButton = document.getElementById('add-city-button');
+    
+    // Settings controls
+    const startHourSelect = document.getElementById('start-hour');
+    const workingStartSelect = document.getElementById('working-start');
+    const workingEndSelect = document.getElementById('working-end');
+    const awakeStartSelect = document.getElementById('awake-start');
+    const awakeEndSelect = document.getElementById('awake-end');
+
+    // Set today's date as default
+    const today = new Date();
+    dateSelector.value = today.toISOString().split('T')[0];
+
+    // Helper function to get timezone abbreviation
+    function getTimezoneAbbr(timezone, date) {
+      const options = { timeZoneName: 'short', timeZone: timezone };
+      // Get timezone abbreviation from the date string
+      const tzAbbr = new Intl.DateTimeFormat('en-US', options)
+        .formatToParts(date)
+        .find(part => part.type === 'timeZoneName').value;
+      return tzAbbr;
+    }
+
+    // Generate time table function
+    function generateTimeTable() {
+      // Clear existing table
+      tableHeader.innerHTML = '';
+      tableBody.innerHTML = '';
+
+      // Get selected date
+      const selectedDate = dateSelector.value;
+      const dateObj = new Date(selectedDate);
+
+      // Add city headers including primary city
+      selectedCities.forEach((city, index) => {
+        const cityName = city.name;
+        const tzAbbr = getTimezoneAbbr(city.timezone, dateObj);
+
+        tableHeader.innerHTML += `
+          <th>
+            ${cityName}
+            <span class="timezone-name">${tzAbbr}</span>
+          </th>`;
+      });
+
+      // Get primary city timezone
+      const primaryTimezone = selectedCities[0].timezone;
+
+      // Generate rows for each hour (24 hours)
+      for (let hour = parseInt(settings.startHour); hour < parseInt(settings.startHour) + 24; hour++) {
+        const row = document.createElement('tr');
+        const displayHour = hour % 24;
+
+        // Create array to track if all cities are in business hours for coloring
+        const hourTypes = [];
+
+        // City time columns including primary city
+        selectedCities.forEach((city, index) => {
+          const cityCell = document.createElement('td');
+
+          // Create a date object for the selected date at the current hour in the primary timezone
+          const date = new Date(`${selectedDate}T${displayHour.toString().padStart(2, '0')}:00:00`);
+
+          // Convert to city's timezone
+          const options = {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: city.timezone,
+            hour12: false
+          };
+
+          const localTime = date.toLocaleTimeString('en-US', options);
+
+          // For primary city (index 0), just show the hour
+          if (index === 0) {
+            cityCell.textContent = `${displayHour.toString().padStart(2, '0')}:00`;
+          } else {
+            cityCell.textContent = localTime;
+          }
+
+          // Get hour for styling
+          const cityHour = parseInt(localTime.split(':')[0]);
+
+          // Determine cell color based on working and awake hours
+          // Handle working hours (might also wrap around midnight)
+          if ((settings.workingHours.start <= settings.workingHours.end && 
+               cityHour >= settings.workingHours.start && 
+               cityHour <= settings.workingHours.end) ||
+              (settings.workingHours.start > settings.workingHours.end && 
+               (cityHour >= settings.workingHours.start || 
+                cityHour <= settings.workingHours.end))) {
+            hourTypes.push('business');
+          } 
+          // Handle awake hours (may wrap around midnight)
+          else if (
+            // If start hour is less than end hour, normal comparison
+            (settings.awakeHours.start <= settings.awakeHours.end && 
+             cityHour >= settings.awakeHours.start && 
+             cityHour <= settings.awakeHours.end) ||
+            // If end hour is less than start hour (crosses midnight)
+            (settings.awakeHours.start > settings.awakeHours.end && 
+             (cityHour >= settings.awakeHours.start || 
+              cityHour <= settings.awakeHours.end))
+          ) {
+            hourTypes.push('working');
+          } else {
+            hourTypes.push('night');
+          }
+
+          row.appendChild(cityCell);
+        });
+
+        // Color the entire row based on all cities' hours
+        if (hourTypes.every(type => type === 'business')) {
+          row.classList.add('business-hours');
+        } else if (hourTypes.every(type => type === 'business' || type === 'working')) {
+          row.classList.add('working-hours');
+        } else {
+          row.classList.add('night-hours');
+        }
+
+        tableBody.appendChild(row);
+      }
+    }
+
+    // Initialize city select dropdown
+    function initializeCitySelect() {
+      citySelect.innerHTML = '';
+
+      // Filter out already selected cities
+      const selectedCityNames = selectedCities.map(city => city.name);
+      const availableCities = allCities.filter(city => !selectedCityNames.includes(city.name));
+
+      availableCities.forEach(city => {
+        const option = document.createElement('option');
+        option.value = city.name;
+        option.textContent = city.name;
+        citySelect.appendChild(option);
+      });
+    }
+
+    // Update city list in settings panel
+    function updateCityList() {
+      cityList.innerHTML = '';
+
+      selectedCities.forEach((city, index) => {
+        const li = document.createElement('li');
+        li.className = 'city-item';
+
+        // Create label
+        const label = document.createElement('div');
+
+        if (index === 0) {
+          label.innerHTML = `<span>${city.name} <span class="primary-tag">Primary</span></span>`;
+        } else {
+          label.innerHTML = `<span>${city.name}</span>`;
+        }
+
+        li.appendChild(label);
+
+        // Add buttons container
+        const buttonsContainer = document.createElement('div');
+
+        // Add remove button for all cities
+        const removeButton = document.createElement('button');
+        removeButton.textContent = '×';
+        removeButton.className = 'remove-btn';
+
+        removeButton.addEventListener('click', () => {
+          if (index === 0 && selectedCities.length > 1) {
+            // If removing primary city, make the next one primary
+            selectedCities.splice(0, 1);
+          } else if (selectedCities.length > 1) {
+            selectedCities.splice(index, 1);
+          } else {
+            alert("You must keep at least one city.");
+            return;
+          }
+
+          saveSettings();
+          updateCityList();
+          initializeCitySelect();
+          generateTimeTable();
+        });
+
+        // Add make primary button for non-primary cities
+        if (index !== 0) {
+          const makePrimaryButton = document.createElement('button');
+          makePrimaryButton.textContent = '★';
+          makePrimaryButton.className = 'remove-btn';
+          makePrimaryButton.title = 'Make Primary';
+          makePrimaryButton.style.marginRight = '5px';
+
+          makePrimaryButton.addEventListener('click', () => {
+            // Move this city to the beginning of the array
+            const city = selectedCities.splice(index, 1)[0];
+            selectedCities.unshift(city);
+
+            saveSettings();
+            updateCityList();
+            generateTimeTable();
+          });
+
+          buttonsContainer.appendChild(makePrimaryButton);
+        }
+
+        buttonsContainer.appendChild(removeButton);
+        li.appendChild(buttonsContainer);
+
+        cityList.appendChild(li);
+      });
+    }
+
+    // Save settings to localStorage
+    function saveSettings() {
+      localStorage.setItem('selectedCities', JSON.stringify(selectedCities));
+      localStorage.setItem('timeSettings', JSON.stringify(settings));
+    }
+
+    // Load settings from localStorage
+    function loadSettings() {
+      const savedCities = localStorage.getItem('selectedCities');
+      if (savedCities) {
+        selectedCities = JSON.parse(savedCities);
+      }
+      
+      const savedTimeSettings = localStorage.getItem('timeSettings');
+      if (savedTimeSettings) {
+        settings = JSON.parse(savedTimeSettings);
+        
+        // Update UI to match loaded settings
+        startHourSelect.value = settings.startHour;
+        workingStartSelect.value = settings.workingHours.start;
+        workingEndSelect.value = settings.workingHours.end;
+        awakeStartSelect.value = settings.awakeHours.start;
+        awakeEndSelect.value = settings.awakeHours.end;
+      }
+    }
+    
+    // Function to update settings from UI values
+    function updateSettings() {
+      settings.startHour = parseInt(startHourSelect.value);
+      settings.workingHours.start = parseInt(workingStartSelect.value);
+      settings.workingHours.end = parseInt(workingEndSelect.value);
+      settings.awakeHours.start = parseInt(awakeStartSelect.value);
+      settings.awakeHours.end = parseInt(awakeEndSelect.value);
+      
+      saveSettings();
+      generateTimeTable();
+    }
+
+    // Event Listeners
+    dateSelector.addEventListener('change', generateTimeTable);
+    
+    // Settings controls event listeners
+    startHourSelect.addEventListener('change', updateSettings);
+    workingStartSelect.addEventListener('change', updateSettings);
+    workingEndSelect.addEventListener('change', updateSettings);
+    awakeStartSelect.addEventListener('change', updateSettings);
+    awakeEndSelect.addEventListener('change', updateSettings);
+
+    settingsButton.addEventListener('click', () => {
+      settingsPanel.classList.add('open');
+      overlay.classList.add('open');
+    });
+
+    closeSettings.addEventListener('click', () => {
+      settingsPanel.classList.remove('open');
+      overlay.classList.remove('open');
+    });
+
+    overlay.addEventListener('click', () => {
+      settingsPanel.classList.remove('open');
+      overlay.classList.remove('open');
+    });
+
+    addCityButton.addEventListener('click', () => {
+      const selectedCityName = citySelect.value;
+      if (selectedCityName && citySelect.options.length > 0) {
+        const city = allCities.find(city => city.name === selectedCityName);
+        if (city) {
+          selectedCities.push(city);
+          saveSettings();
+          updateCityList();
+          initializeCitySelect();
+          generateTimeTable();
+        }
+      }
+    });
+
+    // Initialize the app
+    loadSettings();
+    updateCityList();
+    initializeCitySelect();
+    generateTimeTable();
+  </script>
+</body>
+</html>
