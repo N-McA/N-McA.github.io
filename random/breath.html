@@ -34,7 +34,6 @@
         -webkit-tap-highlight-color: transparent;
       }
 
-      button,
       input {
         font: inherit;
       }
@@ -46,9 +45,7 @@
         border: 0;
         background: transparent;
         color: inherit;
-        cursor: pointer;
         user-select: none;
-        touch-action: manipulation;
       }
 
       .ball {
@@ -146,10 +143,10 @@
   </head>
   <body>
     <main>
-      <button class="stage" id="stage" type="button" aria-label="Pause breathing timer">
+      <div class="stage">
         <span class="ball" id="ball" aria-hidden="true"></span>
         <span class="line" aria-hidden="true"></span>
-      </button>
+      </div>
 
       <section class="settings" aria-label="Breathing timer settings">
         <div class="setting">
@@ -169,18 +166,17 @@
 
     <script>
       const ball = document.querySelector("#ball");
-      const stage = document.querySelector("#stage");
       const inputs = {
         up: document.querySelector("#up"),
         hold: document.querySelector("#hold"),
         down: document.querySelector("#down"),
       };
+      const storageKey = "breathing-timer-settings";
 
       const phaseCount = 4;
       let phaseIndex = 0;
       let elapsed = 0;
       let previousTime = performance.now();
-      let paused = false;
 
       function seconds(input, fallback, minimum) {
         const value = Number.parseFloat(input.value);
@@ -205,8 +201,32 @@
         return 1;
       }
 
-      function updateStageLabel() {
-        stage.setAttribute("aria-label", paused ? "Resume breathing timer" : "Pause breathing timer");
+      function restoreSettings() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(storageKey));
+          if (!saved) return;
+
+          if (Number.isFinite(saved.up) && saved.up >= 0.1) inputs.up.value = saved.up;
+          if (Number.isFinite(saved.hold) && saved.hold >= 0) inputs.hold.value = saved.hold;
+          if (Number.isFinite(saved.down) && saved.down >= 0.1) inputs.down.value = saved.down;
+        } catch {
+          // Keep the defaults if storage is unavailable or invalid.
+        }
+      }
+
+      function saveSettings() {
+        try {
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              up: seconds(inputs.up, 2, 0.1),
+              hold: seconds(inputs.hold, 1, 0),
+              down: seconds(inputs.down, 8, 0.1),
+            }),
+          );
+        } catch {
+          // The timer still works when storage is unavailable.
+        }
       }
 
       function frame(now) {
@@ -214,13 +234,10 @@
         previousTime = now;
 
         const phaseDurations = durations();
-        if (!paused) {
-          elapsed += delta;
-          while (elapsed >= phaseDurations[phaseIndex]) {
-            elapsed -= phaseDurations[phaseIndex];
-            phaseIndex = (phaseIndex + 1) % phaseCount;
-            updateStageLabel();
-          }
+        elapsed += delta;
+        while (elapsed >= phaseDurations[phaseIndex]) {
+          elapsed -= phaseDurations[phaseIndex];
+          phaseIndex = (phaseIndex + 1) % phaseCount;
         }
 
         const duration = phaseDurations[phaseIndex];
@@ -234,18 +251,15 @@
         requestAnimationFrame(frame);
       }
 
-      stage.addEventListener("click", () => {
-        paused = !paused;
-        updateStageLabel();
-      });
-
       Object.values(inputs).forEach((input) => {
         input.addEventListener("change", () => {
           const minimum = input === inputs.hold ? 0 : 0.1;
           input.value = seconds(input, input === inputs.hold ? 1 : input === inputs.up ? 2 : 8, minimum);
+          saveSettings();
         });
       });
 
+      restoreSettings();
       requestAnimationFrame(frame);
     </script>
   </body>
