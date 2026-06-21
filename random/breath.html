@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#10100f" />
+    <title>Breathing Timer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --background: #10100f;
+        --text: #aaa7a1;
+        --muted: #686660;
+        --orange: #f28c28;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--background);
+      }
+
+      body {
+        min-height: 100dvh;
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0 0 7.75rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        user-select: none;
+        touch-action: manipulation;
+      }
+
+      .ball {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1.65rem;
+        height: 1.65rem;
+        border-radius: 50%;
+        background: var(--orange);
+        box-shadow: 0 0 1.25rem rgb(242 140 40 / 28%);
+        transform: translate3d(-50%, -50%, 0);
+        will-change: transform;
+        z-index: 2;
+      }
+
+      .line {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1px;
+        height: min(42dvh, 22rem);
+        background: #77736b;
+        transform: translate(-50%, -50%);
+        z-index: 1;
+      }
+
+      .settings {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: end;
+        gap: 0.75rem;
+        padding: 1.25rem max(1rem, env(safe-area-inset-right))
+          max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+      }
+
+      .setting {
+        display: grid;
+        justify-items: start;
+        gap: 0.45rem;
+        min-width: 0;
+      }
+
+      .setting:nth-child(2) {
+        justify-items: center;
+      }
+
+      .setting:last-child {
+        justify-items: end;
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 0.65rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      input {
+        width: min(100%, 5.25rem);
+        height: 2.45rem;
+        padding: 0 0.5rem;
+        border: 1px solid #343330;
+        border-radius: 0.35rem;
+        outline: none;
+        background: #191918;
+        color: #e6e2da;
+        font-size: 1rem;
+        text-align: center;
+        appearance: textfield;
+      }
+
+      input::-webkit-inner-spin-button,
+      input::-webkit-outer-spin-button {
+        margin: 0;
+        appearance: none;
+      }
+
+      input:focus-visible {
+        border-color: var(--orange);
+      }
+
+      @media (min-width: 40rem) {
+        .settings {
+          width: min(32rem, 100%);
+          margin-inline: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <button class="stage" id="stage" type="button" aria-label="Pause breathing timer">
+        <span class="ball" id="ball" aria-hidden="true"></span>
+        <span class="line" aria-hidden="true"></span>
+      </button>
+
+      <section class="settings" aria-label="Breathing timer settings">
+        <div class="setting">
+          <label for="up">seconds up</label>
+          <input id="up" type="number" inputmode="decimal" min="0.1" step="0.1" value="2" />
+        </div>
+        <div class="setting">
+          <label for="hold">hold</label>
+          <input id="hold" type="number" inputmode="decimal" min="0" step="0.1" value="1" />
+        </div>
+        <div class="setting">
+          <label for="down">seconds down</label>
+          <input id="down" type="number" inputmode="decimal" min="0.1" step="0.1" value="8" />
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const ball = document.querySelector("#ball");
+      const stage = document.querySelector("#stage");
+      const inputs = {
+        up: document.querySelector("#up"),
+        hold: document.querySelector("#hold"),
+        down: document.querySelector("#down"),
+      };
+
+      const phaseCount = 4;
+      let phaseIndex = 0;
+      let elapsed = 0;
+      let previousTime = performance.now();
+      let paused = false;
+
+      function seconds(input, fallback, minimum) {
+        const value = Number.parseFloat(input.value);
+        return Number.isFinite(value) ? Math.max(minimum, value) : fallback;
+      }
+
+      function durations() {
+        const up = seconds(inputs.up, 2, 0.1);
+        const hold = seconds(inputs.hold, 1, 0);
+        const down = seconds(inputs.down, 8, 0.1);
+        return [up, hold, down, hold];
+      }
+
+      function ease(progress) {
+        return (1 - Math.cos(Math.PI * progress)) / 2;
+      }
+
+      function positionFor(index, progress) {
+        if (index === 0) return 1 - ease(progress);
+        if (index === 1) return 0;
+        if (index === 2) return ease(progress);
+        return 1;
+      }
+
+      function updateStageLabel() {
+        stage.setAttribute("aria-label", paused ? "Resume breathing timer" : "Pause breathing timer");
+      }
+
+      function frame(now) {
+        const delta = Math.min((now - previousTime) / 1000, 0.1);
+        previousTime = now;
+
+        const phaseDurations = durations();
+        if (!paused) {
+          elapsed += delta;
+          while (elapsed >= phaseDurations[phaseIndex]) {
+            elapsed -= phaseDurations[phaseIndex];
+            phaseIndex = (phaseIndex + 1) % phaseCount;
+            updateStageLabel();
+          }
+        }
+
+        const duration = phaseDurations[phaseIndex];
+        const progress = duration === 0 ? 1 : Math.min(elapsed / duration, 1);
+        const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const travel = Math.min(window.innerHeight * 0.42, rootFontSize * 22);
+        const offset = (positionFor(phaseIndex, progress) - 0.5) * travel;
+        const isHold = phaseIndex === 1 || phaseIndex === 3;
+        const scale = isHold ? 1 - 0.15 * Math.sin(Math.PI * progress) : 1;
+        ball.style.transform = `translate3d(-50%, calc(-50% + ${offset}px), 0) scale(${scale})`;
+        requestAnimationFrame(frame);
+      }
+
+      stage.addEventListener("click", () => {
+        paused = !paused;
+        updateStageLabel();
+      });
+
+      Object.values(inputs).forEach((input) => {
+        input.addEventListener("change", () => {
+          const minimum = input === inputs.hold ? 0 : 0.1;
+          input.value = seconds(input, input === inputs.hold ? 1 : input === inputs.up ? 2 : 8, minimum);
+        });
+      });
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
