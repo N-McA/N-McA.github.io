@@ -1,0 +1,3 @@
+engine: ab
+seed: 1
+nnue: 1   # NNUE eval from nnue_weights.rs (self-play trained)

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yavalath</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Yavalath</h1>
+  <p class="rules">four in a row wins<br>three in a row loses</p>
+
+  <svg id="board" viewBox="0 0 100 100"></svg>
+  <div id="status" class="status"></div>
+
+  <div class="controls">
+    <button id="undo" class="icon" title="Undo">&#x21BA;</button>
+    <button id="reset" title="Start over">reset</button>
+    <button id="redo" class="icon" title="Redo">&#x21BB;</button>
+    <button id="settings-btn" class="icon gear" title="Settings">&#x2699;</button>
+  </div>
+</main>
+
+<aside id="settings" class="drawer" hidden>
+  <div class="drawer-head">
+    <h2>Settings</h2>
+    <button id="settings-close" class="icon" title="Close">&#x2715;</button>
+  </div>
+
+  <section class="card">
+    <div class="row">
+      <label>Board
+        <select id="size">
+          <option value="5" selected>Yavalath (5)</option>
+          <option value="4">milli (4)</option>
+          <option value="3">micro (3)</option>
+          <option value="2">nano (3/2)</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label><span class="dot dot-1"></span>Red <select id="p1-controller"></select></label>
+      <label><span class="dot dot-2"></span>Teal <select id="p2-controller"></select></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row replay">
+      <button id="nav-start" title="Start">&#x23EE;</button>
+      <button id="nav-prev" title="Back">&#x25C0;</button>
+      <span id="ply-label">0 / 0</span>
+      <button id="nav-next" title="Forward">&#x25B6;</button>
+      <button id="nav-end" title="Live">&#x23ED;</button>
+    </div>
+    <ol id="move-list" class="moves"></ol>
+  </section>
+
+  <section class="card">
+    <div class="export-row"><code id="human-str"></code><button data-copy="human-str" title="Copy">&#x2398;</button></div>
+    <div class="export-row"><code id="compact-str"></code><button data-copy="compact-str" title="Copy">&#x2398;</button></div>
+    <div class="row import">
+      <input id="import-str" type="text" placeholder="Paste a game string (human or compact)&hellip;" spellcheck="false">
+      <button id="import-btn">Load</button>
+    </div>
+    <div id="import-error" class="error"></div>
+  </section>
+</aside>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

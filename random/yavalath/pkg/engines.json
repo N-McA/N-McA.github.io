@@ -1,0 +1,1 @@
+[{"name":"ab-exp","file":"engines/ab-exp.yaml"},{"name":"ab","file":"engines/ab.yaml"},{"name":"greedy","file":"engines/greedy.yaml"},{"name":"lookahead1","file":"engines/lookahead1.yaml"},{"name":"nnue","file":"engines/nnue.yaml"},{"name":"random","file":"engines/random.yaml"}]
