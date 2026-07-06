@@ -43,7 +43,22 @@ h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: 0.5px; }
 #board .hex.playable:hover { fill: var(--hex-hover); cursor: pointer; }
 #board .hex.stone-1 { fill: var(--red); }
 #board .hex.stone-2 { fill: var(--teal); }
-#board .last-dot { fill: var(--bg); opacity: 0.55; pointer-events: none; }
+#board .last-dot {
+  fill: var(--bg);
+  pointer-events: none;
+  animation: last-dot-fade 5s ease-out forwards;
+}
+@keyframes last-dot-fade {
+  from { opacity: 0.55; }
+  to { opacity: 0; }
+}
+#board .hint-val {
+  fill: var(--accent);
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
 #board .win-line {
   stroke: var(--text);
   stroke-width: 0.26;
@@ -58,6 +73,13 @@ h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: 0.5px; }
   color: var(--muted);
 }
 .status.win { color: var(--text); font-weight: 700; }
+
+.hint-summary {
+  min-height: 1.4em;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 .controls {
   margin-top: 14px;
@@ -83,6 +105,8 @@ h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: 0.5px; }
   line-height: 1.2;
 }
 .controls button.gear { font-size: 24px; }
+.controls button.eye { display: inline-flex; align-items: center; }
+.controls button.eye svg { display: block; }
 .controls button:hover { color: var(--text); border-color: var(--text); }
 .controls button:disabled { opacity: 0.35; cursor: default; }
 .controls button:disabled:hover { color: var(--muted); border-color: var(--muted); }

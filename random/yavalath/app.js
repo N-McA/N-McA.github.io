@@ -3,6 +3,10 @@ import init, { WasmGame, WasmEngine, engine_names } from "./pkg/yavalath_wasm.js
 const $ = (id) => document.getElementById(id);
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 1]];
 const ENGINE_BUDGET_MS = 1000;
+const HINT_BUDGET_MS = 600;
+const MAX_HINTS = 6;
+const NO_SCORE = -(2 ** 31); // engine reports no value (see WasmEngine.rank)
+const MATE = 30_000;
 
 // --- state ------------------------------------------------------------
 let size = 5;
@@ -14,6 +18,11 @@ let engineTimer = null;
 const controllers = { 1: "human", 2: "human" };
 const engines = { 1: null, 2: null }; // persistent WasmEngine per seat
 let engineDefs = []; // {name, yaml|null} — mirrors configs/engines/*.yaml
+
+let hintBot = { name: null, engine: null }; // dedicated analysis instance
+let hintCache = { key: null, ranked: null };
+let hintEpoch = 0; // invalidates in-flight hint computations
+let cellXY = new Map(); // cell index -> {x, y} of the rendered board
 
 function randomSeed() {
   return BigInt((Math.random() * 2 ** 32) >>> 0);
@@ -66,6 +75,8 @@ $("redo").onclick = doRedo;
 $("size").onchange = (e) => { size = parseInt(e.target.value, 10); newGame(); };
 $("p1-controller").onchange = (e) => { setController(1, e.target.value); poke(); };
 $("p2-controller").onchange = (e) => { setController(2, e.target.value); poke(); };
+
+$("eye").onclick = showHints;
 
 $("settings-btn").onclick = () => { $("settings").hidden = false; };
 $("settings-close").onclick = () => { $("settings").hidden = true; };
@@ -193,7 +204,9 @@ function shownGame() {
 
 function render() {
   const g = shownGame();
-  renderBoard(g);
+  renderBoard(g); // wipes any hint labels with the rest of the svg
+  hintEpoch++; // drop in-flight hint computations for the old position
+  $("hint-summary").textContent = "";
   renderStatus(g);
   renderMoves();
   $("human-str").textContent = game.to_human();
@@ -226,6 +239,7 @@ function renderBoard(g) {
     minX = Math.min(minX, x - Math.sqrt(3) / 2); maxX = Math.max(maxX, x + Math.sqrt(3) / 2);
     minY = Math.min(minY, y - 1); maxY = Math.max(maxY, y + 1);
   }
+  cellXY = new Map(items.map((it) => [it.cell, it]));
   const pad = 0.3;
   svg.setAttribute(
     "viewBox",
@@ -301,6 +315,94 @@ function terminalLine(g, byAxial, last) {
     if (!best || run.length > best.length) best = run;
   }
   return best && best.length >= 3 ? [best[0], best[best.length - 1]] : null;
+}
+
+// --- hints (eye button) ------------------------------------------------
+// The engine consulted for hints: the mover's bot if that seat is one,
+// otherwise the other seat's bot, otherwise the default engine.
+function hintEngineName(g) {
+  const mover = g.to_move();
+  if (controllers[mover] !== "human") return controllers[mover];
+  const other = controllers[mover === 1 ? 2 : 1];
+  return other !== "human" ? other : defaultBot;
+}
+
+function hintEngine(name) {
+  if (hintBot.name !== name) hintBot = { name, engine: makeEngine(name) };
+  return hintBot.engine;
+}
+
+// One-shot hint: mark up to MAX_HINTS candidate moves for the shown
+// position with their scores. Cleared by the next render (board change).
+function showHints() {
+  const g = shownGame();
+  if (g.status() !== 0) return;
+  const name = hintEngineName(g);
+  const key = `${name}|${g.to_compact()}`;
+  if (hintCache.key === key) {
+    drawHints(g, hintCache.ranked, name);
+    return;
+  }
+  $("hint-summary").textContent = `${name} is thinking…`;
+  const epoch = ++hintEpoch;
+  // Defer so the board and "thinking" text paint before the search blocks.
+  setTimeout(() => {
+    if (epoch !== hintEpoch) return;
+    let ranked;
+    try {
+      const flat = hintEngine(name).rank(g, HINT_BUDGET_MS, MAX_HINTS);
+      ranked = [];
+      for (let i = 0; i < flat.length; i += 2) {
+        ranked.push({ cell: flat[i], score: flat[i + 1] });
+      }
+    } catch (e) {
+      $("hint-summary").textContent = String(e.message ?? e);
+      return;
+    }
+    hintCache = { key, ranked };
+    drawHints(g, ranked, name);
+  }, 30);
+}
+
+function drawHints(g, ranked, name) {
+  if (!ranked.length) return;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = $("board");
+  for (const el of svg.querySelectorAll(".hint-val")) el.remove();
+  const best = ranked[0].score;
+  for (const { cell, score } of ranked) {
+    const it = cellXY.get(cell);
+    if (!it) continue;
+    // Relative strength in (0, 1]: 1 for the best move, decaying with the
+    // score gap (~300 eval points per e-fold).
+    const rel = score === NO_SCORE ? 1 : Math.exp((score - best) / 300);
+    const text = shortScore(score);
+    const label = document.createElementNS(ns, "text");
+    label.setAttribute("x", it.x);
+    label.setAttribute("y", it.y);
+    label.setAttribute("font-size", text.length > 4 ? "0.42" : "0.52");
+    label.setAttribute("opacity", (0.45 + 0.55 * rel).toFixed(2));
+    label.classList.add("hint-val");
+    label.textContent = text;
+    svg.appendChild(label);
+  }
+  const parts = ranked.map((r) => `${g.cell_name(r.cell)} ${fmtScore(r.score)}`.trim());
+  $("hint-summary").textContent = `${name}: ${parts.join(" · ")}`;
+}
+
+// Compact score for the board cell: W3 = win in 3 (own moves), L3 likewise.
+function shortScore(s) {
+  if (s === NO_SCORE) return "•";
+  if (s >= MATE - 64) return `W${Math.floor((MATE - s) / 2) + 1}`;
+  if (s <= -(MATE - 64)) return `L${Math.floor((MATE + s) / 2) + 1}`;
+  return (s > 0 ? "+" : "") + s;
+}
+
+function fmtScore(s) {
+  if (s === NO_SCORE) return "";
+  if (s >= MATE - 64) return `win in ${Math.floor((MATE - s) / 2) + 1}`;
+  if (s <= -(MATE - 64)) return `loss in ${Math.floor((MATE + s) / 2) + 1}`;
+  return (s > 0 ? "+" : "") + s;
 }
 
 function renderStatus(g) {

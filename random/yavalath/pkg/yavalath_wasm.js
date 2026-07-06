@@ -67,6 +67,25 @@ export class WasmEngine {
         return this;
     }
     /**
+     * Up to `n` candidate moves for the side to move, best first, flattened
+     * as [cell, score, cell, score, ...]. Scores are from the mover's
+     * perspective; i32::MIN means the engine reports no value.
+     * @param {WasmGame} game
+     * @param {number} budget_ms
+     * @param {number} n
+     * @returns {Int32Array}
+     */
+    rank(game, budget_ms, n) {
+        _assertClass(game, WasmGame);
+        const ret = wasm.wasmengine_rank(this.__wbg_ptr, game.__wbg_ptr, budget_ms, n);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayI32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * Reset for a new game.
      * @param {bigint} seed
      */
@@ -342,6 +361,11 @@ function _assertClass(instance, klass) {
     }
 }
 
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
 function getArrayJsValueFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     const mem = getDataViewMemory0();
@@ -364,6 +388,14 @@ function getDataViewMemory0() {
         cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
     }
     return cachedDataViewMemory0;
+}
+
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.byteLength === 0) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -456,6 +488,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;
+    cachedInt32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;
