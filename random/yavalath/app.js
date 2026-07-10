@@ -91,8 +91,10 @@ let zenTimer = null;
 let zenStart = null;
 let zenJustSet = false; // swallow the click that ends the long-press
 
+// A clicked hex may already be detached (the move's render rebuilds the
+// svg before the click bubbles here), so detached targets don't count.
 const onBackground = (t) =>
-  !t.closest("#board, .controls, .drawer, button, select, input, a");
+  t.isConnected && !t.closest("#board, .controls, .drawer, button, select, input, a");
 
 document.addEventListener("pointerdown", (e) => {
   zenJustSet = false;
