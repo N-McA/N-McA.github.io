@@ -84,6 +84,49 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") $("settings").hidden = true;
 });
 
+// Long-press on the background hides everything but the board (zen mode);
+// a tap on the background brings it back.
+const ZEN_HOLD_MS = 500;
+let zenTimer = null;
+let zenStart = null;
+let zenJustSet = false; // swallow the click that ends the long-press
+
+const onBackground = (t) =>
+  !t.closest("#board, .controls, .drawer, button, select, input, a");
+
+document.addEventListener("pointerdown", (e) => {
+  zenJustSet = false;
+  if (!onBackground(e.target)) return;
+  zenStart = { x: e.clientX, y: e.clientY };
+  zenTimer = setTimeout(() => {
+    zenTimer = null;
+    zenJustSet = true;
+    document.body.classList.add("zen");
+  }, ZEN_HOLD_MS);
+});
+document.addEventListener("pointermove", (e) => {
+  if (zenTimer === null || zenStart === null) return;
+  if (Math.hypot(e.clientX - zenStart.x, e.clientY - zenStart.y) > 12) {
+    clearTimeout(zenTimer);
+    zenTimer = null;
+  }
+});
+for (const ev of ["pointerup", "pointercancel"]) {
+  document.addEventListener(ev, () => {
+    clearTimeout(zenTimer);
+    zenTimer = null;
+  });
+}
+document.addEventListener("click", (e) => {
+  if (zenJustSet) {
+    zenJustSet = false;
+    return;
+  }
+  if (document.body.classList.contains("zen") && onBackground(e.target)) {
+    document.body.classList.remove("zen");
+  }
+});
+
 $("nav-start").onclick = () => setView(0);
 $("nav-prev").onclick = () => setView(Math.max(0, shownPly() - 1));
 $("nav-next").onclick = () => setView(Math.min(game.move_count(), shownPly() + 1));
