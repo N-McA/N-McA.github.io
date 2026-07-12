@@ -1,3 +1,3 @@
 engine: ab
 seed: 1
-nnue: 1   # self-play NNUE (lineage leader at 150ms); learned: 1 linear eval as fallback
+nnue: 0   # learned linear eval (current NNUE is undertrained; flip back when it wins)

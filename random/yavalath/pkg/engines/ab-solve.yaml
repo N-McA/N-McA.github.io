@@ -1,0 +1,5 @@
+engine: ab
+seed: 1
+nnue: 1
+solve_empties: 26   # exact solver takes over below this (see solve.rs perf test)
+solve_nodes: 150000 # ~30ms worst case at ~5M nodes/s, inside a 100ms budget

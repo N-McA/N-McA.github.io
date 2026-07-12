@@ -1,0 +1,4 @@
+engine: ab
+seed: 1
+nnue: 1       # current EMA weights copied into nnue_weights.bin
+max_depth: 6  # depth-matched vs linear-d6: knowledge test, no nps tax

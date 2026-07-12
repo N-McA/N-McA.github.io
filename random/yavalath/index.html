@@ -14,6 +14,7 @@
   <svg id="board" viewBox="0 0 100 100"></svg>
   <div id="status" class="status"></div>
   <div id="hint-summary" class="hint-summary"></div>
+  <div id="grade-summary" class="hint-summary"></div>
 
   <div class="controls">
     <button id="undo" class="icon" title="Undo">&#x21BA;</button>
@@ -51,6 +52,20 @@
       <label><span class="dot dot-1"></span>Red <select id="p1-controller"></select></label>
       <label><span class="dot dot-2"></span>Teal <select id="p2-controller"></select></label>
     </div>
+    <div class="row">
+      <label><input type="checkbox" id="grade-live"> Show move strength as you play</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="hist-head">
+      <h2>History</h2>
+      <span id="hist-agg" class="hist-agg"></span>
+      <button id="hist-clear" title="Delete all recorded games">clear</button>
+    </div>
+    <svg id="hist-trend" viewBox="0 0 260 64" hidden></svg>
+    <ol id="hist-list" class="hist-list"></ol>
+    <div id="hist-empty" class="hist-empty">Finished games are recorded here.</div>
   </section>
 
   <section class="card">

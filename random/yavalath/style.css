@@ -68,10 +68,16 @@ h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: 0.5px; }
   pointer-events: none;
 }
 #board .win-line {
-  stroke: var(--text);
+  stroke: var(--bg);
   stroke-width: 0.26;
   stroke-linecap: round;
   pointer-events: none;
+  stroke-dasharray: 1; /* paired with pathLength=1 on the element */
+  animation: win-line-draw 0.6s ease-out forwards;
+}
+@keyframes win-line-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
 }
 
 .status {
@@ -186,6 +192,81 @@ select, input[type="text"], .drawer button {
 .moves span { color: var(--text); cursor: pointer; padding: 1px 4px; border-radius: 4px; }
 .moves span:hover { background: var(--panel); }
 .moves span.current { background: var(--accent); color: #22190c; }
+
+/* ------------------------------------------------- grading & history -- */
+
+/* Move cost in win-prob points, centred on the stone where the last-move
+   dot would sit — board-coloured like the dot, so it reads on any stone. */
+#board .grade-badge {
+  pointer-events: none;
+  font-weight: 700;
+  fill: var(--bg);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.hist-head { display: flex; align-items: center; gap: 10px; }
+.hist-head h2 { margin: 0; font-size: 15px; }
+.hist-agg {
+  flex: 1;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.hist-head button { font-size: 11px; padding: 2px 8px; }
+.hist-head button[hidden] { display: none; }
+
+#hist-trend {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 260 / 64; /* match the viewBox: SVGs have no intrinsic height */
+  display: block;
+  margin-top: 10px;
+}
+#hist-trend[hidden] { display: none; }
+.trend-grid { stroke: var(--hex-stroke); stroke-width: 0.5; opacity: 0.5; }
+.trend-line { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: 0.8; }
+.trend-dot { stroke: var(--panel-2); stroke-width: 1; }
+.trend-dot.win { fill: var(--teal); }
+.trend-dot.loss { fill: var(--red); }
+.trend-dot.draw { fill: var(--muted); }
+
+.hist-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.hist-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.hist-list li:hover { background: var(--panel); }
+.hist-date { min-width: 44px; text-align: left; }
+.hist-opp {
+  flex: 1;
+  text-align: left;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist-res { font-weight: 700; }
+.hist-res.win { color: var(--teal); }
+.hist-res.loss { color: var(--red); }
+.hist-acc { min-width: 36px; text-align: right; }
+.hist-bl { color: var(--err); }
+.hist-empty { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.hist-empty[hidden] { display: none; }
 
 .export-row { display: flex; gap: 8px; align-items: center; }
 .export-row + .export-row { margin-top: 8px; }

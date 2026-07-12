@@ -1,9 +1,15 @@
-import init, { WasmGame, WasmEngine, engine_names } from "./pkg/yavalath_wasm.js";
+import init, { WasmGame, engine_names } from "./pkg/yavalath_wasm.js";
+import {
+  gradeMove, gameStats, moveAccuracy, EXCLUDED,
+  loadHistory, saveGame, clearHistory, loadPrefs, savePrefs,
+} from "./grader.js";
 
 const $ = (id) => document.getElementById(id);
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 1]];
 const ENGINE_BUDGET_MS = 1000;
 const HINT_BUDGET_MS = 600;
+const GRADE_BUDGET_MS = 600;
+const GRADE_K = 300; // logistic scale: eval points -> win probability
 const MAX_HINTS = 6;
 const NO_SCORE = -(2 ** 31); // engine reports no value (see WasmEngine.rank)
 const MATE = 30_000;
@@ -12,32 +18,73 @@ const MATE = 30_000;
 let size = 5;
 let game = null;        // live WasmGame (authoritative)
 let viewPly = null;     // null = live view; number = replay position
-let redoStack = [];     // cell indices undone from the live game
-let engineTimer = null;
+let thinkEpoch = 0;     // bumped on any game mutation; stales in-flight replies
 
 const controllers = { 1: "human", 2: "human" };
-const engines = { 1: null, 2: null }; // persistent WasmEngine per seat
 let engineDefs = []; // {name, yaml|null} — mirrors configs/engines/*.yaml
+let redoStack = [];  // cell indices undone from the live game
 
-let hintBot = { name: null, engine: null }; // dedicated analysis instance
 let hintCache = { key: null, ranked: null };
 let hintEpoch = 0; // invalidates in-flight hint computations
 let cellXY = new Map(); // cell index -> {x, y} of the rendered board
+
+let prefs = loadPrefs();
+let historyCache = loadHistory();
+const gradeCache = new Map(); // "position compact|cell" -> grade record
+let gradeQueue = []; // human moves waiting to be graded
+let gradeBusy = false;
+let currentGameId = null;
+let liveHumanMoves = 0; // human moves actually played this game (not imported/redone)
 
 function randomSeed() {
   return BigInt((Math.random() * 2 ** 32) >>> 0);
 }
 
-function makeEngine(name) {
-  const def = engineDefs.find((d) => d.name === name);
-  return def?.yaml
-    ? WasmEngine.from_yaml(def.yaml, randomSeed())
-    : new WasmEngine(name, randomSeed());
+// --- engine workers -----------------------------------------------------
+// All searches run in workers so the UI never blocks: one worker plays,
+// one analyses (hints + grading), so a grade can't delay the reply.
+const pendingRpc = new Map(); // id -> {resolve, reject}
+let rpcId = 0;
+
+function makeWorker() {
+  const w = new Worker("./engine-worker.js", { type: "module" });
+  w.onmessage = (e) => {
+    const p = pendingRpc.get(e.data.id);
+    if (!p) return;
+    pendingRpc.delete(e.data.id);
+    if (e.data.error) p.reject(new Error(e.data.error));
+    else p.resolve(e.data);
+  };
+  return w;
+}
+
+function call(worker, msg) {
+  return new Promise((resolve, reject) => {
+    const id = ++rpcId;
+    pendingRpc.set(id, { resolve, reject });
+    worker.postMessage({ ...msg, id });
+  });
+}
+
+const playWorker = makeWorker();
+const analysisWorker = makeWorker();
+
+// A search already running can't be stopped, but its result is discarded
+// (epoch mismatch) and queued choose requests are skipped worker-side.
+function stopThinking() {
+  thinkEpoch++;
+  playWorker.postMessage({ type: "cancel", before: thinkEpoch });
 }
 
 function setController(side, name) {
+  stopThinking();
   controllers[side] = name;
-  engines[side] = name === "human" ? null : makeEngine(name);
+  call(playWorker, {
+    type: "setSlot",
+    slot: `seat${side}`,
+    name: name === "human" ? null : name,
+    seed: randomSeed(),
+  });
 }
 
 // --- setup ------------------------------------------------------------
@@ -56,6 +103,10 @@ try {
 } catch {
   engineDefs = engine_names().map((name) => ({ name, yaml: null }));
 }
+await Promise.all([
+  call(playWorker, { type: "init", engineDefs }),
+  call(analysisWorker, { type: "init", engineDefs }),
+]);
 
 for (const sel of [$("p1-controller"), $("p2-controller")]) {
   for (const name of ["human", ...engineDefs.map((d) => d.name)]) {
@@ -80,6 +131,19 @@ $("eye").onclick = showHints;
 
 $("settings-btn").onclick = () => { $("settings").hidden = false; };
 $("settings-close").onclick = () => { $("settings").hidden = true; };
+
+$("grade-live").checked = !!prefs.gradeLive;
+$("grade-live").onchange = (e) => {
+  prefs.gradeLive = e.target.checked;
+  savePrefs(prefs);
+  updateGradeDisplay();
+};
+$("hist-clear").onclick = () => {
+  if (!historyCache.length || !confirm("Delete all recorded games?")) return;
+  clearHistory();
+  historyCache = [];
+  renderHistory();
+};
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") $("settings").hidden = true;
 });
@@ -141,16 +205,21 @@ for (const btn of document.querySelectorAll("[data-copy]")) {
 }
 
 newGame();
+renderHistory();
 
 // --- game flow --------------------------------------------------------
 function newGame(imported = null) {
-  clearTimeout(engineTimer);
+  stopThinking();
   game = imported ?? new WasmGame(size);
   size = game.size();
   $("size").value = String(size);
   viewPly = null;
   redoStack = [];
-  for (const side of [1, 2]) engines[side]?.reset(randomSeed());
+  currentGameId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  liveHumanMoves = 0;
+  // Keep pending grades only for games that made it into the history.
+  gradeQueue = gradeQueue.filter((it) => historyCache.some((r) => r.id === it.gameId));
+  call(playWorker, { type: "reset", seed: randomSeed() });
   $("import-error").textContent = "";
   render();
   poke();
@@ -161,6 +230,7 @@ function shownPly() {
 }
 
 function setView(ply) {
+  stopThinking(); // entering a replay view pauses the engine's reply
   viewPly = ply !== null && ply >= game.move_count() ? null : ply;
   render();
   poke();
@@ -170,16 +240,35 @@ function humanInvolved() {
   return controllers[1] === "human" || controllers[2] === "human";
 }
 
-// If it's an engine's turn (and we're viewing live), let it move.
+// If it's an engine's turn (and we're viewing live), let it move. Every
+// caller bumps thinkEpoch first, so each epoch has at most one request in
+// flight and replies that outlived a mutation are discarded.
 function poke() {
-  clearTimeout(engineTimer);
   if (viewPly !== null || game.status() !== 0) return;
-  const engine = engines[game.to_move()];
-  if (!engine) return;
-  engineTimer = setTimeout(() => {
-    game.play(engine.choose(game, ENGINE_BUDGET_MS));
+  const seat = game.to_move();
+  if (controllers[seat] === "human") return;
+  const epoch = thinkEpoch;
+  // Small beat so the human's stone paints before the search starts.
+  setTimeout(async () => {
+    if (epoch !== thinkEpoch || game.status() !== 0) return;
+    let reply;
+    try {
+      reply = await call(playWorker, {
+        type: "choose",
+        slot: `seat${seat}`,
+        compact: game.to_compact(),
+        budgetMs: ENGINE_BUDGET_MS,
+        epoch,
+      });
+    } catch {
+      return;
+    }
+    if (reply.stale || epoch !== thinkEpoch) return;
+    game.play(reply.cell);
     redoStack = []; // a fresh engine move diverges from any undone line
+    thinkEpoch++; // the board changed; this request is spent
     render();
+    maybeSaveGame();
     poke();
   }, 250);
 }
@@ -188,15 +277,19 @@ function humanClick(cell) {
   if (viewPly !== null) { setView(null); return; }
   if (game.status() !== 0 || controllers[game.to_move()] !== "human") return;
   if (!game.is_legal(cell)) return;
+  stopThinking();
   game.play(cell);
+  liveHumanMoves++;
+  enqueueGrade(game.move_count() - 1);
   redoStack = [];
   render();
+  maybeSaveGame();
   poke();
 }
 
 // Undo one ply; if a human plays an engine, keep undoing to the human's turn.
 function doUndo() {
-  clearTimeout(engineTimer);
+  stopThinking();
   if (viewPly !== null) { setView(null); return; }
   if (game.move_count() === 0) return;
   do {
@@ -212,7 +305,7 @@ function doUndo() {
 }
 
 function doRedo() {
-  clearTimeout(engineTimer);
+  stopThinking();
   if (viewPly !== null || redoStack.length === 0) return;
   do {
     game.play(redoStack.pop());
@@ -223,6 +316,7 @@ function doRedo() {
     game.status() === 0
   );
   render();
+  maybeSaveGame();
   poke();
 }
 
@@ -250,6 +344,7 @@ function shownGame() {
 function render() {
   const g = shownGame();
   renderBoard(g); // wipes any hint labels with the rest of the svg
+  updateGradeDisplay();
   hintEpoch++; // drop in-flight hint computations for the old position
   $("hint-summary").textContent = "";
   renderStatus(g);
@@ -316,8 +411,11 @@ function renderBoard(g) {
     svg.appendChild(hex);
   }
 
-  // Theme-neutral last-move marker: a small board-coloured dot.
-  const lastIt = items.find((it) => it.cell === last && it.content !== 0);
+  const line = terminalLine(g, byAxial, last);
+
+  // Theme-neutral last-move marker: a small board-coloured dot. Skipped on
+  // a decisive final move — the outcome line already marks it.
+  const lastIt = !line && items.find((it) => it.cell === last && it.content !== 0);
   if (lastIt) {
     const dot = document.createElementNS(ns, "circle");
     dot.setAttribute("cx", lastIt.x);
@@ -327,13 +425,14 @@ function renderBoard(g) {
     svg.appendChild(dot);
   }
 
-  const line = terminalLine(g, byAxial, last);
   if (line) {
     const el = document.createElementNS(ns, "line");
     el.setAttribute("x1", line[0].x);
     el.setAttribute("y1", line[0].y);
     el.setAttribute("x2", line[1].x);
     el.setAttribute("y2", line[1].y);
+    // pathLength normalises the dash animation regardless of line length.
+    el.setAttribute("pathLength", 1);
     el.classList.add("win-line");
     svg.appendChild(el);
   }
@@ -362,6 +461,179 @@ function terminalLine(g, byAxial, last) {
   return best && best.length >= 3 ? [best[0], best[best.length - 1]] : null;
 }
 
+// --- move grading & history --------------------------------------------
+// Every live human move is graded in the background by a dedicated instance
+// of the default (strongest) engine, whether or not the live display is on:
+// the grades feed the history record saved when the game ends. Grading is
+// cached by (position, move), so undo/redo and replays never re-search.
+
+function enqueueGrade(ply) {
+  const seat = ply % 2 === 0 ? 1 : 2;
+  if (controllers[seat] !== "human") return;
+  const moves = game.moves();
+  gradeQueue.push({
+    gameId: currentGameId,
+    size,
+    prefix: moves.slice(0, ply),
+    cell: moves[ply],
+  });
+  processGradeQueue();
+}
+
+// One item at a time; the search runs in the analysis worker.
+function processGradeQueue() {
+  if (gradeBusy || !gradeQueue.length) return;
+  gradeBusy = true;
+  const item = gradeQueue.shift();
+  gradeItem(item)
+    .catch(() => {})
+    .finally(() => {
+      gradeBusy = false;
+      processGradeQueue();
+    });
+}
+
+async function gradeItem(item) {
+  const snap = new WasmGame(item.size);
+  for (const c of item.prefix) snap.play(c);
+  const key = `${snap.to_compact()}|${item.cell}`;
+  if (!gradeCache.has(key)) {
+    const { flat } = await call(analysisWorker, {
+      type: "rank",
+      slot: "grade",
+      name: defaultBot,
+      seed: randomSeed(),
+      compact: snap.to_compact(),
+      budgetMs: GRADE_BUDGET_MS,
+      n: snap.cell_count(),
+    });
+    const ranked = [];
+    for (let i = 0; i < flat.length; i += 2) ranked.push({ cell: flat[i], score: flat[i + 1] });
+    const grade = gradeMove(ranked, item.cell, GRADE_K);
+    if (!grade) return;
+    gradeCache.set(key, grade);
+  }
+  if (item.gameId === currentGameId) {
+    updateGradeDisplay();
+    if (game.status() !== 0) maybeSaveGame(); // fill in grades that finished late
+  } else {
+    refreshRecordGrades(item.gameId); // game already archived; update its record
+  }
+}
+
+// Record the finished game (insert or update by id). Only games where the
+// human actually played count; replays and imports stay unrecorded.
+function maybeSaveGame() {
+  if (game.status() === 0 || currentGameId === null || liveHumanMoves === 0) return;
+  const humanSeats = [1, 2].filter((s) => controllers[s] === "human");
+  if (!humanSeats.length) return;
+  const prev = historyCache.find((r) => r.id === currentGameId);
+  const rec = {
+    id: currentGameId,
+    ts: prev?.ts ?? new Date().toISOString(),
+    size,
+    compact: game.to_compact(),
+    controllers: { ...controllers },
+    result: game.status(),
+    grader: { name: defaultBot, budgetMs: GRADE_BUDGET_MS, k: GRADE_K, ver: 1 },
+    grades: collectGrades(game, humanSeats),
+  };
+  historyCache = saveGame(rec);
+  renderHistory();
+}
+
+// Cached grades for every human move of a (finished) game, in ply order.
+function collectGrades(g, humanSeats) {
+  const moves = g.moves();
+  const snap = new WasmGame(g.size());
+  const grades = [];
+  for (let ply = 0; ply < moves.length; ply++) {
+    const seat = ply % 2 === 0 ? 1 : 2;
+    if (humanSeats.includes(seat)) {
+      const grade = gradeCache.get(`${snap.to_compact()}|${moves[ply]}`);
+      if (grade) grades.push({ ply, seat, ...grade });
+    }
+    snap.play(moves[ply]);
+  }
+  return grades;
+}
+
+// A grade finished after its game was archived: refresh that record.
+function refreshRecordGrades(gameId) {
+  const rec = historyCache.find((r) => r.id === gameId);
+  if (!rec) return;
+  try {
+    const g = WasmGame.from_string(rec.compact);
+    const humanSeats = [1, 2].filter((s) => rec.controllers[s] === "human");
+    rec.grades = collectGrades(g, humanSeats);
+    historyCache = saveGame(rec);
+    renderHistory();
+  } catch {}
+}
+
+const GRADE_WORDS = {
+  best: "best move", good: "good", inaccuracy: "inaccuracy",
+  mistake: "mistake", blunder: "blunder", forced: "forced", hopeless: "already lost",
+};
+
+// The most recent graded human move among the last two plies of the shown
+// position (two so the badge survives the engine's reply).
+function gradeForShown(g) {
+  const moves = g.moves();
+  for (let back = 0; back < 2; back++) {
+    const ply = moves.length - 1 - back;
+    if (ply < 0) break;
+    const snap = new WasmGame(g.size());
+    for (let i = 0; i < ply; i++) snap.play(moves[i]);
+    const grade = gradeCache.get(`${snap.to_compact()}|${moves[ply]}`);
+    if (grade) return grade;
+  }
+  return null;
+}
+
+// Badge on the graded cell plus a one-line verdict under the board.
+// Re-derived from the cache on every render, so it also works in replays.
+function updateGradeDisplay() {
+  const svg = $("board");
+  for (const el of svg.querySelectorAll(".grade-badge")) el.remove();
+  $("grade-summary").textContent = "";
+  if (!prefs.gradeLive) return;
+  const g = shownGame();
+  const grade = gradeForShown(g);
+  if (!grade) return;
+  // A decisive final move: the outcome line runs through this cell, so the
+  // in-cell score would clash with it — the summary line below carries it.
+  const moves = g.moves();
+  const underLine =
+    (g.status() === 1 || g.status() === 2) && grade.cell === moves[moves.length - 1];
+  const it = cellXY.get(grade.cell);
+  if (it && !underLine) {
+    const ns = "http://www.w3.org/2000/svg";
+    // The score sits where the last-move dot would: remove the dot if it
+    // marks this cell (an engine move's dot elsewhere is left alone).
+    for (const dot of svg.querySelectorAll(".last-dot")) {
+      if (dot.getAttribute("cx") === String(it.x) && dot.getAttribute("cy") === String(it.y)) {
+        dot.remove();
+      }
+    }
+    // Win-probability points given away by this move (0 = engine's choice).
+    const pts = Math.round(grade.wpLoss * 100);
+    const label = pts === 0 ? "0" : `−${pts}`;
+    const t = document.createElementNS(ns, "text");
+    t.classList.add("grade-badge", `grade-${grade.tag}`);
+    t.setAttribute("x", it.x);
+    t.setAttribute("y", it.y);
+    t.setAttribute("font-size", label.length > 2 ? "0.44" : "0.55");
+    t.textContent = label;
+    svg.appendChild(t);
+  }
+  let text = `${game.cell_name(grade.cell)}: ${GRADE_WORDS[grade.tag]}`;
+  if (!EXCLUDED.has(grade.tag) && grade.wpLoss >= 0.005) {
+    text += ` (−${Math.round(grade.wpLoss * 100)}% win · best ${game.cell_name(grade.bestCell)})`;
+  }
+  $("grade-summary").textContent = text;
+}
+
 // --- hints (eye button) ------------------------------------------------
 // The engine consulted for hints: the mover's bot if that seat is one,
 // otherwise the other seat's bot, otherwise the default engine.
@@ -372,14 +644,9 @@ function hintEngineName(g) {
   return other !== "human" ? other : defaultBot;
 }
 
-function hintEngine(name) {
-  if (hintBot.name !== name) hintBot = { name, engine: makeEngine(name) };
-  return hintBot.engine;
-}
-
 // One-shot hint: mark up to MAX_HINTS candidate moves for the shown
 // position with their scores. Cleared by the next render (board change).
-function showHints() {
+async function showHints() {
   const g = shownGame();
   if (g.status() !== 0) return;
   const name = hintEngineName(g);
@@ -390,23 +657,28 @@ function showHints() {
   }
   $("hint-summary").textContent = `${name} is thinking…`;
   const epoch = ++hintEpoch;
-  // Defer so the board and "thinking" text paint before the search blocks.
-  setTimeout(() => {
-    if (epoch !== hintEpoch) return;
-    let ranked;
-    try {
-      const flat = hintEngine(name).rank(g, HINT_BUDGET_MS, MAX_HINTS);
-      ranked = [];
-      for (let i = 0; i < flat.length; i += 2) {
-        ranked.push({ cell: flat[i], score: flat[i + 1] });
-      }
-    } catch (e) {
-      $("hint-summary").textContent = String(e.message ?? e);
-      return;
-    }
-    hintCache = { key, ranked };
-    drawHints(g, ranked, name);
-  }, 30);
+  let flat;
+  try {
+    ({ flat } = await call(analysisWorker, {
+      type: "rank",
+      slot: "hint",
+      name,
+      seed: randomSeed(),
+      compact: g.to_compact(),
+      budgetMs: HINT_BUDGET_MS,
+      n: MAX_HINTS,
+    }));
+  } catch (e) {
+    if (epoch === hintEpoch) $("hint-summary").textContent = String(e.message ?? e);
+    return;
+  }
+  if (epoch !== hintEpoch) return; // board changed while ranking
+  const ranked = [];
+  for (let i = 0; i < flat.length; i += 2) {
+    ranked.push({ cell: flat[i], score: flat[i + 1] });
+  }
+  hintCache = { key, ranked };
+  drawHints(g, ranked, name);
 }
 
 function drawHints(g, ranked, name) {
@@ -488,4 +760,114 @@ function renderMoves() {
     }
     list.appendChild(li);
   }
+}
+
+// --- history panel ------------------------------------------------------
+
+// W/L/D from the human's perspective; null when both seats were human.
+function humanOutcome(rec) {
+  if (rec.result === 3) return "draw";
+  const seats = [1, 2].filter((s) => rec.controllers[s] === "human");
+  if (seats.length !== 1) return null;
+  return rec.result === seats[0] ? "win" : "loss";
+}
+
+function opponentName(rec) {
+  const bots = [1, 2].map((s) => rec.controllers[s]).filter((c) => c !== "human");
+  return bots.length ? `vs ${bots[0]}` : "vs human";
+}
+
+function histEl(cls, text) {
+  const e = document.createElement("span");
+  e.className = cls;
+  e.textContent = text;
+  return e;
+}
+
+function renderHistory() {
+  const entries = historyCache.map((r) => ({ r, s: gameStats(r) }));
+  const n = entries.length;
+  $("hist-empty").hidden = n > 0;
+  $("hist-clear").hidden = n === 0;
+
+  let agg = "";
+  if (n) {
+    const count = (o) => entries.filter((e) => humanOutcome(e.r) === o).length;
+    // Overall accuracy weights every graded move equally, not every game.
+    const graded = historyCache.flatMap((r) => r.grades.filter((g) => !EXCLUDED.has(g.tag)));
+    agg = `${n} game${n === 1 ? "" : "s"} · ${count("win")}W ${count("loss")}L ${count("draw")}D`;
+    if (graded.length) {
+      const acc = graded.reduce((s, g) => s + moveAccuracy(g.wpLoss), 0) / graded.length;
+      agg += ` · ${Math.round(acc)}%`;
+    }
+  }
+  $("hist-agg").textContent = agg;
+  renderTrend(entries);
+
+  const list = $("hist-list");
+  list.innerHTML = "";
+  for (const { r, s } of entries.slice(-30).reverse()) {
+    const li = document.createElement("li");
+    const out = humanOutcome(r);
+    const date = new Date(r.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    li.append(
+      histEl("hist-date", date),
+      histEl("hist-opp", opponentName(r)),
+      histEl(`hist-res ${out ?? ""}`, out ? out[0].toUpperCase() : "–"),
+      histEl("hist-acc", s.acc !== null ? `${Math.round(s.acc)}%` : "–"),
+    );
+    if (s.blunders) li.append(histEl("hist-bl", `${s.blunders}??`));
+    li.title = `${s.graded} graded move${s.graded === 1 ? "" : "s"} — click to replay`;
+    li.onclick = () => {
+      try {
+        newGame(WasmGame.from_string(r.compact)); // fresh id: replaying can't overwrite
+      } catch {}
+    };
+    list.appendChild(li);
+  }
+}
+
+// Accuracy per game over time: fixed 0-100 domain (no zoomed-in drama),
+// recessive midlines, result-coloured dots with native tooltips. The game
+// list right below is the table view of the same data.
+function renderTrend(entries) {
+  const svg = $("hist-trend");
+  svg.innerHTML = "";
+  const pts = entries.filter((e) => e.s.acc !== null).slice(-40);
+  // toggleAttribute: SVG elements lack the HTML `hidden` IDL property.
+  svg.toggleAttribute("hidden", pts.length < 2);
+  if (pts.length < 2) return;
+  const ns = "http://www.w3.org/2000/svg";
+  const W = 260, H = 64, px = 8, py = 8;
+  const x = (i) => px + (i * (W - 2 * px)) / (pts.length - 1);
+  const y = (acc) => py + (1 - acc / 100) * (H - 2 * py);
+  for (const v of [0, 50, 100]) {
+    const grid = document.createElementNS(ns, "line");
+    grid.setAttribute("x1", px);
+    grid.setAttribute("x2", W - px);
+    grid.setAttribute("y1", y(v).toFixed(1));
+    grid.setAttribute("y2", y(v).toFixed(1));
+    grid.classList.add("trend-grid");
+    svg.appendChild(grid);
+  }
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute(
+    "points",
+    pts.map((p, i) => `${x(i).toFixed(1)},${y(p.s.acc).toFixed(1)}`).join(" ")
+  );
+  line.classList.add("trend-line");
+  svg.appendChild(line);
+  pts.forEach((p, i) => {
+    const dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", x(i).toFixed(1));
+    dot.setAttribute("cy", y(p.s.acc).toFixed(1));
+    dot.setAttribute("r", 3);
+    dot.classList.add("trend-dot", humanOutcome(p.r) ?? "draw");
+    const title = document.createElementNS(ns, "title");
+    const date = new Date(p.r.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    title.textContent =
+      `${date} · ${opponentName(p.r)} · ${humanOutcome(p.r) ?? "two humans"} · ${Math.round(p.s.acc)}%`;
+    dot.appendChild(title);
+    svg.appendChild(dot);
+  });
 }

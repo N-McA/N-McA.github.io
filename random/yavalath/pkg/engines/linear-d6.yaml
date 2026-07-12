@@ -1,0 +1,4 @@
+engine: ab
+seed: 1
+nnue: 0       # learned linear eval (the anchor)
+max_depth: 6
